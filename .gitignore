@@ -1,0 +1,30 @@
+# Dépendances
+node_modules/
+
+# Fichiers de configuration sensibles
+.env
+
+# Base de données
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Logs
+logs/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tests
+coverage/
+
+# Build
+dist/
+build/

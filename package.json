@@ -1,0 +1,37 @@
+{
+  "name": "quiz-buzzer-server",
+  "version": "1.0.0",
+  "description": "Hub Node.js pour le système QuizBuzzer",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
+    "init-db": "node scripts/init-db.js",
+    "reset-db": "node scripts/reset-db.js",
+    "test": "jest",
+    "lint": "eslint server/"
+  },
+  "keywords": [
+    "quiz",
+    "buzzer",
+    "websocket",
+    "game"
+  ],
+  "author": "Votre nom",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.2.2",
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "uuid": "^13.0.0",
+    "winston": "^3.19.0",
+    "ws": "^8.19.0"
+  }
+}

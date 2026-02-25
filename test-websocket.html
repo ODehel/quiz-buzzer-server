@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test WebSocket QuizBuzzer</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+        #messages { 
+            background: #f0f0f0; 
+            padding: 10px; 
+            margin-top: 20px; 
+            height: 400px; 
+            overflow-y: scroll;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 Test WebSocket QuizBuzzer</h1>
+    
+    <div>
+        <button onclick="connectAngular()">🟢 Connecter Angular</button>
+        <button onclick="connectBuzzer()">🔵 Connecter Buzzer</button>
+        <button onclick="disconnect()">🔴 Déconnecter</button>
+    </div>
+    
+    <h2>Messages reçus :</h2>
+    <pre id="messages"></pre>
+
+    <script>
+        let ws = null;
+
+        function connectAngular() {
+            ws = new WebSocket('ws://localhost:3000');
+            
+            ws.onopen = () => {
+                log('✅ Connecté au serveur');
+                
+                // Envoyer le message d'identification Angular
+                const message = {
+                    type: 'ANGULAR_CONNECT',
+                    timestamp: Date.now(),
+                    sender: 'ANGULAR',
+                    payload: {
+                        version: '1.0.0',
+                        role: 'master'
+                    }
+                };
+                
+                ws.send(JSON.stringify(message));
+                log('📤 Envoyé: ANGULAR_CONNECT');
+            };
+
+            ws.onmessage = (event) => {
+                log('📥 Reçu: ' + event.data);
+            };
+
+            ws.onclose = () => {
+                log('🔴 Déconnecté');
+            };
+
+            ws.onerror = (error) => {
+                log('❌ Erreur: ' + error);
+            };
+        }
+
+        function connectBuzzer() {
+            ws = new WebSocket('ws://localhost:3000');
+            
+            ws.onopen = () => {
+                log('✅ Connecté au serveur');
+                
+                // Envoyer le message d'identification Buzzer
+                const message = {
+                    type: 'BUZZER_REGISTER',
+                    timestamp: Date.now(),
+                    sender: 'BUZZ_TEST',
+                    payload: {
+                        buzzerID: 'BUZZ_TEST',
+                        macAddress: 'AA:BB:CC:DD:EE:FF'
+                    }
+                };
+                
+                ws.send(JSON.stringify(message));
+                log('📤 Envoyé: BUZZER_REGISTER');
+            };
+
+            ws.onmessage = (event) => {
+                log('📥 Reçu: ' + event.data);
+            };
+
+            ws.onclose = () => {
+                log('🔴 Déconnecté');
+            };
+
+            ws.onerror = (error) => {
+                log('❌ Erreur: ' + error);
+            };
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function log(message) {
+            const pre = document.getElementById('messages');
+            const time = new Date().toLocaleTimeString();
+            pre.textContent += `[${time}] ${message}\n`;
+            pre.scrollTop = pre.scrollHeight;
+        }
+    </script>
+</body>
+</html>

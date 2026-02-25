@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Test Authentification QuizBuzzer</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button { padding: 10px 20px; margin: 5px; }
+        #log { background: #f0f0f0; padding: 10px; margin-top: 20px; height: 400px; overflow-y: scroll; }
+        input { padding: 8px; margin: 5px; width: 200px; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Test Authentification</h1>
+    
+    <div>
+        <h2>Authentification simple (dev)</h2>
+        <input type="text" id="username" placeholder="Username (ex: admin)" value="admin">
+        <button onclick="simpleAuth()">Se connecter</button>
+    </div>
+
+    <div>
+        <h2>Actions protégées</h2>
+        <button onclick="createQuestion()">Créer une question (requiert auth)</button>
+        <button onclick="getQuestions()">Lister les questions (public)</button>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+        let token = null;
+
+        function log(message) {
+            const div = document.getElementById('log');
+            div.innerHTML += `<div>${new Date().toLocaleTimeString()} - ${message}</div>`;
+            div.scrollTop = div.scrollHeight;
+        }
+
+        async function simpleAuth() {
+            const username = document.getElementById('username').value;
+            
+            try {
+                const response = await fetch('http://localhost:3000/api/auth/simple', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username })
+                });
+
+                const text = await response.text(); // ✅ Lire comme texte d'abord
+                log(`Réponse brute: ${text}`);      // ✅ Afficher pour diagnostiquer
+        
+                const data = JSON.parse(text);      // Ensuite parser
+                
+                if (data.success) {
+                    token = data.token;
+                    log(`✅ Authentifié ! Token: ${token.substring(0, 20)}...`);
+                } else {
+                    log(`❌ Erreur: ${data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Erreur réseau: ${error.message}`);
+            }
+        }
+
+        async function createQuestion() {
+            if (!token) {
+                log('❌ Vous devez vous connecter d\'abord !');
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:3000/api/questions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        text: 'Question test créée via API',
+                        type: 'MCQ',
+                        answers: ['Réponse A', 'Réponse B', 'Réponse C', 'Réponse D'],
+                        correct_answer: 0,
+                        category: 'Test',
+                        difficulty: 1,
+                        points: 10
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    log(`✅ Question créée ! ID: ${data.id}`);
+                } else {
+                    log(`❌ Erreur: ${data.error}`);
+                }
+            } catch (error) {
+                log(`❌ Erreur réseau: ${error.message}`);
+            }
+        }
+
+        async function getQuestions() {
+            try {
+                const response = await fetch('http://localhost:3000/api/questions');
+                const data = await response.json();
+                
+                log(`✅ ${data.length} questions trouvées`);
+                console.log(data);
+            } catch (error) {
+                log(`❌ Erreur réseau: ${error.message}`);
+            }
+        }
+    </script>
+</body>
+</html>
