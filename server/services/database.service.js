@@ -119,6 +119,18 @@ class DatabaseService {
         )
       `);
 
+      // Table jingles
+      this.db.exec(`
+        CREATE TABLE IF NOT EXISTS jingles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          duration INTEGER,
+          description TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       // Index pour performances
       this.db.exec(`
         CREATE INDEX IF NOT EXISTS idx_game_results_game ON game_results(game_id);
@@ -138,6 +150,23 @@ class DatabaseService {
           logger.error(`Migration failed: ${e.message}`);
           throw e;
         }
+      }
+
+      // Migration : créer la table jingles si elle n'existe pas déjà
+      try {
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS jingles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            duration INTEGER,
+            description TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+      } catch (e) {
+        logger.error(`Migration jingles failed: ${e.message}`);
+        throw e;
       }
 
       // Insérer des données de démo si la table questions est vide

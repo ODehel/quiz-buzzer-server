@@ -41,11 +41,13 @@ try {
   const authRoutes = require('./routes/auth.routes');
   const questionsRoutes = require('./routes/questions.routes');
   const gamesRoutes = require('./routes/games.routes');
+  const jinglesRoutes = require('./routes/jingles.routes');
 
   app.use('/api/status', statusRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/questions', questionsRoutes);
   app.use('/api/games', gamesRoutes);
+  app.use('/api/jingles', jinglesRoutes);
 
   // ═══════════════════════════════════════
   // 5. SERVEUR HTTP
