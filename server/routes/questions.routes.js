@@ -30,7 +30,7 @@ router.get('/', optionalAuth, (req, res) => {
  */
 router.post('/', authenticateJWT, (req, res) => {
   try {
-    const { text, type, answers, correct_answer, category, difficulty, points } = req.body;
+    const { text, type, answers, correct_answer, expected_answer, category, difficulty, points } = req.body;
 
     if (!text || !type) {
       return res.status(400).json({ error: 'text and type are required' });
@@ -42,15 +42,16 @@ router.post('/', authenticateJWT, (req, res) => {
 
     const db = databaseService.getDb();
     const stmt = db.prepare(`
-      INSERT INTO questions (text, type, answers, correct_answer, category, difficulty, points)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO questions (text, type, answers, correct_answer, expected_answer, category, difficulty, points)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const result = stmt.run(
       text,
       type,
       answers ? JSON.stringify(answers) : null,
-      correct_answer || null,
+      correct_answer ?? null,
+      expected_answer ?? null,
       category || null,
       difficulty || 3,
       points || 10
@@ -60,6 +61,43 @@ router.post('/', authenticateJWT, (req, res) => {
       id: result.lastInsertRowid,
       message: 'Question created',
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PUT /api/questions/:id
+ * Mettre à jour une question (AUTH REQUISE)
+ */
+router.put('/:id', authenticateJWT, (req, res) => {
+  try {
+    const { text, type, answers, correct_answer, expected_answer, category, difficulty, points } = req.body;
+    const db = databaseService.getDb();
+
+    const stmt = db.prepare(`
+      UPDATE questions 
+      SET text = ?, type = ?, answers = ?, correct_answer = ?, expected_answer = ?,
+          category = ?, difficulty = ?, points = ?
+      WHERE id = ?
+    `);
+
+    const result = stmt.run(
+      text, type,
+      answers ? JSON.stringify(answers) : null,
+      correct_answer ?? null,
+      expected_answer ?? null,
+      category || null,
+      difficulty || 3,
+      points || 10,
+      req.params.id
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Question not found' });
+    }
+
+    res.json({ message: 'Question updated' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

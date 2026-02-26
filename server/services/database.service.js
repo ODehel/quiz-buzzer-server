@@ -65,6 +65,7 @@ class DatabaseService {
           type TEXT CHECK(type IN ('MCQ', 'BUZZER')) NOT NULL,
           answers TEXT,
           correct_answer INTEGER,
+          expected_answer TEXT,
           category TEXT,
           difficulty INTEGER CHECK(difficulty BETWEEN 1 AND 5),
           points INTEGER DEFAULT 10,
@@ -127,6 +128,17 @@ class DatabaseService {
       `);
 
       logger.info('Database schema ready');
+
+      // Migration : ajouter expected_answer si la colonne n'existe pas déjà
+      try {
+        this.db.exec(`ALTER TABLE questions ADD COLUMN expected_answer TEXT`);
+        logger.info('Migration: added expected_answer column');
+      } catch (e) {
+        if (!e.message.includes('duplicate column name') && !e.message.includes('already has column')) {
+          logger.error(`Migration failed: ${e.message}`);
+          throw e;
+        }
+      }
 
       // Insérer des données de démo si la table questions est vide
       this.insertDemoData();
