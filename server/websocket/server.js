@@ -1,4 +1,6 @@
 const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
 const logger = require('../utils/logger');
 
 class WebSocketServer {
@@ -8,6 +10,7 @@ class WebSocketServer {
     this.buzzerClients = new Map(); // buzzerID → { ws, info }
     this.db = null;
     this.gameService = null;
+    this.activeJingleStreams = new Set(); // buzzerID values currently receiving a jingle
 
     this.setupServer();
     logger.info('WebSocket server ready');
@@ -295,6 +298,10 @@ class WebSocketServer {
         this.handleBuzzReopen(message);
         break;
 
+      case 'JINGLE_PLAY':
+        this.handleJinglePlay(message);
+        break;
+
       default:
         logger.debug(`[Angular] Unhandled: ${message.type}`);
     }
@@ -521,6 +528,150 @@ class WebSocketServer {
     this.sendToAngular('BUZZ_REOPENED', {
       excludedPlayers,
       remainingPlayers: this.buzzerClients.size - excludedPlayers.length,
+    });
+  }
+
+  /**
+   * ⭐ Envoyer un jingle en streaming à un buzzer donné
+   */
+  async handleJinglePlay(message) {
+    const CHUNK_SIZE = 4096; // 4KB par chunk
+    const { buzzerID, jingleId } = message.payload;
+
+    logger.info(`[Jingle] Play request: jingle ${jingleId} → buzzer ${buzzerID}`);
+
+    // Vérifier qu'un streaming n'est pas déjà en cours pour ce buzzer
+    if (this.activeJingleStreams.has(buzzerID)) {
+      logger.warn(`[Jingle] Buzzer ${buzzerID} already receiving a jingle`);
+      this.sendToAngular('JINGLE_ERROR', {
+        buzzerID,
+        jingleId,
+        error: 'Buzzer is already playing a jingle',
+      });
+      return;
+    }
+
+    // Vérifier que le buzzer est connecté
+    const buzzerData = this.buzzerClients.get(buzzerID);
+    if (!buzzerData || buzzerData.ws.readyState !== WebSocket.OPEN) {
+      logger.warn(`[Jingle] Buzzer ${buzzerID} not available`);
+      this.sendToAngular('JINGLE_ERROR', {
+        buzzerID,
+        jingleId,
+        error: 'Buzzer not connected',
+      });
+      return;
+    }
+
+    // Récupérer le jingle depuis la BDD
+    let jingle = null;
+    if (this.db) {
+      try {
+        jingle = this.db.prepare('SELECT * FROM jingles WHERE id = ?').get(jingleId);
+      } catch (err) {
+        logger.error(`[Jingle] DB error: ${err.message}`);
+      }
+    }
+
+    if (!jingle) {
+      logger.error(`[Jingle] Jingle ${jingleId} not found`);
+      this.sendToAngular('JINGLE_ERROR', {
+        buzzerID,
+        jingleId,
+        error: 'Jingle not found',
+      });
+      return;
+    }
+
+    // Valider et normaliser le chemin du fichier pour éviter les traversées de répertoire
+    const resolvedPath = path.resolve(jingle.file_path);
+    const normalizedStored = path.normalize(jingle.file_path);
+    if (!path.isAbsolute(jingle.file_path) && resolvedPath !== path.resolve(normalizedStored)) {
+      logger.error(`[Jingle] Invalid file path: ${jingle.file_path}`);
+      this.sendToAngular('JINGLE_ERROR', {
+        buzzerID,
+        jingleId,
+        error: 'Invalid file path',
+      });
+      return;
+    }
+
+    // Vérifier que le fichier existe
+    if (!fs.existsSync(resolvedPath)) {
+      logger.error(`[Jingle] File not found: ${resolvedPath}`);
+      this.sendToAngular('JINGLE_ERROR', {
+        buzzerID,
+        jingleId,
+        error: `File not found: ${jingle.file_path}`,
+      });
+      return;
+    }
+
+    // Obtenir la taille du fichier
+    const stats = fs.statSync(resolvedPath);
+    const fileSize = stats.size;
+    const ext = path.extname(resolvedPath).toLowerCase().replace('.', '');
+
+    // Notifier le buzzer que le jingle commence
+    this.sendToBuzzer(buzzerID, 'JINGLE_START', {
+      jingleId,
+      name: jingle.name,
+      format: ext,
+      fileSize,
+    });
+
+    // Notifier Angular que le streaming a commencé
+    this.sendToAngular('JINGLE_STARTED', {
+      buzzerID,
+      jingleId,
+      name: jingle.name,
+      fileSize,
+    });
+
+    // Streamer le fichier en chunks via WebSocket
+    this.activeJingleStreams.add(buzzerID);
+    const readStream = fs.createReadStream(resolvedPath, { highWaterMark: CHUNK_SIZE });
+    let chunkIndex = 0;
+
+    readStream.on('data', (chunk) => {
+      if (buzzerData.ws.readyState === WebSocket.OPEN) {
+        // Envoyer le chunk en binaire avec un header de 8 bytes :
+        // [4 bytes: jingleId en little-endian] [4 bytes: chunkIndex en little-endian] [reste: audio data]
+        const header = Buffer.alloc(8);
+        header.writeUInt32LE(jingleId, 0);
+        header.writeUInt32LE(chunkIndex, 4);
+        const packet = Buffer.concat([header, chunk]);
+        buzzerData.ws.send(packet);
+        chunkIndex++;
+      } else {
+        readStream.destroy();
+        logger.warn(`[Jingle] Buzzer ${buzzerID} disconnected during streaming`);
+      }
+    });
+
+    readStream.on('end', () => {
+      this.activeJingleStreams.delete(buzzerID);
+      logger.info(`[Jingle] Streaming complete: ${chunkIndex} chunks sent to ${buzzerID}`);
+      this.sendToBuzzer(buzzerID, 'JINGLE_END', {
+        jingleId,
+        totalChunks: chunkIndex,
+        fileSize,
+      });
+      this.sendToAngular('JINGLE_COMPLETED', {
+        buzzerID,
+        jingleId,
+        totalChunks: chunkIndex,
+      });
+    });
+
+    readStream.on('error', (err) => {
+      this.activeJingleStreams.delete(buzzerID);
+      logger.error(`[Jingle] Read error: ${err.message}`);
+      this.sendToAngular('JINGLE_ERROR', {
+        buzzerID,
+        jingleId,
+        error: `Read error: ${err.message}`,
+      });
     });
   }
 
