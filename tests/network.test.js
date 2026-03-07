@@ -35,4 +35,11 @@ describe("getLocalIpAddress", () => {
 
     expect(getLocalIpAddress(mockInterfaces)).toBeNull();
   });
+
+    it("should use real networkInterfaces when called without arguments", () => {
+    // Couvre la branche du default parameter
+    const result = getLocalIpAddress();
+    // Résultat dépend de la machine, on vérifie juste le type
+    expect(result === null || typeof result === "string").toBe(true);
+  });
 });
