@@ -72,4 +72,49 @@ describe("startServer", () => {
       }
     }
   });
+
+  // ↓↓↓ CES TESTS ÉTAIENT EN DEHORS DU describe — DÉPLACÉS ICI ↓↓↓
+
+  it("should use a custom requestHandler when provided", async () => {
+    const logs = [];
+    const log = (msg) => logs.push(msg);
+    const getIp = () => "10.0.0.1";
+    const requestHandler = (_req, res) => {
+      res.writeHead(200);
+      res.end("custom");
+    };
+
+    server = await startServer({ port: 0, log, getIp, requestHandler });
+
+    expect(server.listening).toBe(true);
+  });
+
+  it("should return 404 by default when no requestHandler is provided", async () => {
+    const { default: request } = await import("supertest");
+    const logs = [];
+    const log = (msg) => logs.push(msg);
+    const getIp = () => "10.0.0.1";
+
+    server = await startServer({ port: 0, log, getIp });
+
+    const res = await request(server).get("/anything");
+    expect(res.status).toBe(404);
+  });
+
+  // Couvre la branche : appel sans argument → tous les defaults s'activent
+  it("should start with all default parameters", async () => {
+    const originalPort = process.env.PORT;
+    process.env.PORT = "0"; // port 0 = random, pour ne pas confliter
+
+    try {
+      server = await startServer();
+      expect(server.listening).toBe(true);
+    } finally {
+      if (originalPort === undefined) {
+        delete process.env.PORT;
+      } else {
+        process.env.PORT = originalPort;
+      }
+    }
+  });
 });

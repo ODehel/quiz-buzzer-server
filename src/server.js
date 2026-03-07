@@ -19,26 +19,33 @@ export function formatTime(now = new Date()) {
 }
 
 /**
- * Démarre le serveur HTTP et affiche les informations de démarrage.
+ * Démarre le serveur HTTP avec le routage configuré.
  *
  * @param {Object} options
- * @param {number}   [options.port]                - Port d'écoute (défaut : 3000 ou $PORT)
- * @param {Function} [options.log=console.log]      - Fonction de log (DIP pour les tests)
- * @param {Function} [options.getIp=getLocalIpAddress] - Résolveur d'IP (DIP pour les tests)
+ * @param {number}   [options.port]     - Port d'écoute
+ * @param {Function} [options.log]      - Fonction de log (DIP pour les tests)
+ * @param {Function} [options.getIp]    - Résolveur d'IP (DIP pour les tests)
+ * @param {Function} [options.requestHandler] - Handler HTTP (DIP pour les tests)
  * @returns {Promise<import("node:http").Server>}
  */
 export function startServer({
-  port = Number(process.env.PORT) || DEFAULT_PORT,
+  port = process.env.PORT !== undefined ? Number(process.env.PORT) : DEFAULT_PORT,
   log = console.log,
   getIp = getLocalIpAddress,
+  requestHandler,
 } = {}) {
-  const server = createServer();
+  const handler = requestHandler || ((_req, res) => {
+    res.writeHead(404);
+    res.end();
+  });
+
+  const server = createServer(handler);
 
   return new Promise((resolve) => {
     server.listen(port, () => {
       const time = formatTime();
       const ip = getIp();
-      
+
       log(`🚀 Server started at ${time}`);
 
       if (ip) {
