@@ -13,7 +13,7 @@ const tokenHandler = createTokenHandler(db, config, tokenRateLimiter);
  * Routeur principal : dispatch les requêtes vers les handlers appropriés.
  */
 function requestHandler(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
   if (url.pathname === "/api/v1/token") {
     tokenHandler(req, res);

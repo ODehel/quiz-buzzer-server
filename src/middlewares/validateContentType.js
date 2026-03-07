@@ -6,7 +6,8 @@ import { AppError } from "../errors/AppError.js";
  */
 export function validateContentType(req) {
   const contentType = req.headers["content-type"];
-  if (!contentType || !contentType.includes("application/json")) {
+  const mimeType = contentType ? contentType.split(";")[0].trim() : "";
+  if (mimeType !== "application/json") {
     throw new AppError(
       415,
       "UNSUPPORTED_MEDIA_TYPE",
