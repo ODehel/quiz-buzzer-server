@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1772867945582" clover="3.2.0">
+  <project timestamp="1772867945582" name="All files">
+    <metrics statements="18" coveredstatements="18" conditionals="14" coveredconditionals="9" methods="5" coveredmethods="5" elements="37" coveredelements="32" complexity="0" loc="18" ncloc="18" packages="1" files="2" classes="2"/>
+    <file name="network.js" path="C:\Users\olivi\source\repos\QuizBuzzer\quiz-buzzer-server\src\network.js">
+      <metrics statements="6" coveredstatements="6" conditionals="5" coveredconditionals="4" methods="1" coveredmethods="1"/>
+      <line num="11" count="4" type="stmt"/>
+      <line num="13" count="4" type="stmt"/>
+      <line num="14" count="4" type="stmt"/>
+      <line num="15" count="5" type="cond" truecount="4" falsecount="0"/>
+      <line num="16" count="2" type="stmt"/>
+      <line num="21" count="2" type="stmt"/>
+    </file>
+    <file name="server.js" path="C:\Users\olivi\source\repos\QuizBuzzer\quiz-buzzer-server\src\server.js">
+      <metrics statements="12" coveredstatements="12" conditionals="9" coveredconditionals="5" methods="4" coveredmethods="4"/>
+      <line num="4" count="1" type="stmt"/>
+      <line num="13" count="5" type="stmt"/>
+      <line num="35" count="4" type="stmt"/>
+      <line num="37" count="4" type="stmt"/>
+      <line num="38" count="4" type="stmt"/>
+      <line num="39" count="4" type="stmt"/>
+      <line num="40" count="4" type="stmt"/>
+      <line num="42" count="4" type="stmt"/>
+      <line num="44" count="4" type="cond" truecount="2" falsecount="0"/>
+      <line num="45" count="3" type="stmt"/>
+      <line num="47" count="1" type="stmt"/>
+      <line num="50" count="4" type="stmt"/>
+    </file>
+  </project>
+</coverage>
