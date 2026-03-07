@@ -64,6 +64,11 @@ function parseJsonBody(req) {
  * @throws {AppError} 400 UNKNOWN_FIELDS | 400 VALIDATION_ERROR
  */
 function validateBody(body) {
+  // Rejet des corps non-objet (null, tableau, primitif)
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    throw new AppError(400, "INVALID_BODY", "Request body must be a JSON object.");
+  }
+
   // Champs inconnus (CA-6, CA-12)
   const unknownFields = Object.keys(body).filter((k) => !ALLOWED_FIELDS.has(k));
   if (unknownFields.length > 0) {

@@ -1,6 +1,5 @@
 import { createServer } from "node:http";
 import { getLocalIpAddress } from "./network.js";
-import { createTokenHandler } from "./routes/tokenRoute.js";
 
 const DEFAULT_PORT = 3000;
 
@@ -30,7 +29,7 @@ export function formatTime(now = new Date()) {
  * @returns {Promise<import("node:http").Server>}
  */
 export function startServer({
-  port = Number(process.env.PORT) || DEFAULT_PORT,
+  port = process.env.PORT !== undefined ? Number(process.env.PORT) : DEFAULT_PORT,
   log = console.log,
   getIp = getLocalIpAddress,
   requestHandler,

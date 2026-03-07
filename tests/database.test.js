@@ -60,9 +60,11 @@ describe("openDatabase", () => {
       expect(db.open).toBe(true);
     } finally {
       db.close();
-      // Nettoyage du fichier créé
+      // Nettoyage du fichier créé (y compris fichiers WAL/SHM annexes)
       const fs = await import("node:fs");
-      try { fs.unlinkSync("quiz-buzzer.db"); } catch { /* ignore */ }
+      for (const suffix of ["", "-wal", "-shm"]) {
+        try { fs.unlinkSync(`quiz-buzzer.db${suffix}`); } catch { /* ignore */ }
+      }
     }
   });
 });
