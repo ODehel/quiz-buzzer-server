@@ -83,11 +83,12 @@ export function createThemesCollectionHandler(db, config, authenticate, authoriz
       const ip = req.socket.remoteAddress || "unknown";
       const rateCheck = rateLimiter.check(ip);
       if (!rateCheck.allowed) {
+        const retryAfter = rateCheck.retryAfter || 60;
         sendJson(res, 429, {
           status: 429,
           error: "RATE_LIMIT_EXCEEDED",
-          message: "Too many requests. Please retry in 30 seconds.",
-        }, { "Retry-After": "30" });
+          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
+        }, { "Retry-After": String(retryAfter) });
         return;
       }
 
