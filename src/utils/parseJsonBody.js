@@ -4,7 +4,7 @@ import { AppError } from "../errors/AppError.js";
  * Lit et parse le body JSON d'une requête.
  *
  * @param {import("node:http").IncomingMessage} req
- * @returns {Promise<Object>}
+ * @returns {Promise<unknown>}
  * @throws {AppError} 400 INVALID_JSON
  */
 export function parseJsonBody(req) {
