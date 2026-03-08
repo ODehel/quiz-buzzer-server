@@ -177,16 +177,8 @@ export function deleteThemeById(db, id) {
     throw new AppError(404, "NOT_FOUND", "The requested theme was not found.");
   }
 
-    //TODO: A réactiver une fois la gestion des questions implémentée
-  // // CA-30 : Vérifier les questions liées
-  // const questionCount = countQuestionsByThemeId(db, id);
-  // if (questionCount > 0) {
-  //   throw new AppError(
-  //     409,
-  //     "THEME_HAS_QUESTIONS",
-  //     "Cannot delete this theme: questions are still associated with it."
-  //   );
-  // }
+  // TODO[CA-30]: Réactiver un garde bloquant la suppression lorsque des questions sont associées au thème
+  // (à implémenter une fois la gestion des questions disponible).
 
   deleteTheme(db, id);
 }
