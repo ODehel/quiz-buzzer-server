@@ -143,11 +143,17 @@ export function createThemeResourceHandler(db, config, authenticate, authorize, 
       const ip = req.socket.remoteAddress || "unknown";
       const rateCheck = rateLimiter.check(ip);
       if (!rateCheck.allowed) {
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: "Too many requests. Please retry in 30 seconds.",
-        }, { "Retry-After": "30" });
+        const retryAfterSeconds = rateCheck.retryAfter ?? 60;
+        sendJson(
+          res,
+          429,
+          {
+            status: 429,
+            error: "RATE_LIMIT_EXCEEDED",
+            message: `Too many requests. Please retry in ${retryAfterSeconds} seconds.`,
+          },
+          { "Retry-After": String(retryAfterSeconds) }
+        );
         return;
       }
 
