@@ -2,60 +2,10 @@ import { AppError } from "../errors/AppError.js";
 import { authenticate } from "../services/authService.js";
 import { validateContentType } from "../middlewares/validateContentType.js";
 import { logError } from "../utils/logger.js";
+import { sendJson, sendError } from "../utils/sendJson.js";
+import { parseJsonBody } from "../utils/parseJsonBody.js";
 
 const ALLOWED_FIELDS = new Set(["username", "password"]);
-
-/**
- * Envoie une réponse JSON.
- *
- * @param {import("node:http").ServerResponse} res
- * @param {number} statusCode
- * @param {Object} body
- * @param {Object} [headers={}] - Headers supplémentaires (ex: Allow, Retry-After)
- */
-function sendJson(res, statusCode, body, headers = {}) {
-  const json = JSON.stringify(body);
-  res.writeHead(statusCode, {
-    "Content-Type": "application/json",
-    "Content-Length": Buffer.byteLength(json),
-    ...headers,
-  });
-  res.end(json);
-}
-
-/**
- * Envoie une réponse d'erreur AppError.
- *
- * @param {import("node:http").ServerResponse} res
- * @param {AppError} err
- * @param {Object} [headers={}]
- */
-function sendError(res, err, headers = {}) {
-  sendJson(res, err.status, err.toJSON(), headers);
-}
-
-/**
- * Lit et parse le body JSON d'une requête.
- *
- * @param {import("node:http").IncomingMessage} req
- * @returns {Promise<Object>}
- * @throws {AppError} 400 INVALID_JSON
- */
-function parseJsonBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on("data", (chunk) => chunks.push(chunk));
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString();
-      try {
-        resolve(JSON.parse(raw));
-      } catch {
-        reject(new AppError(400, "INVALID_JSON", "Request body must be valid JSON."));
-      }
-    });
-    req.on("error", (err) => reject(err));
-  });
-}
 
 /**
  * Valide le body de la requête token.
