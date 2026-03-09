@@ -1,4 +1,4 @@
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { findById } from "../repositories/userRepository.js";
 import { logInfo, logWarn, logError } from "../utils/logger.js";
@@ -134,11 +134,16 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         return;
       }
 
+      // Helper: close and remove an existing session from the registry
+      function replaceExistingSession(existingSub) {
+        const existing = registry.get(existingSub);
+        registry.delete(existingSub);
+        existing.ws.close(WS_CLOSE_SESSION_REPLACED, "Session replaced.");
+      }
+
       // Handle session replacement for same sub (CA-13, CA-17)
       if (registry.has(tokenSub)) {
-        const existing = registry.get(tokenSub);
-        registry.delete(tokenSub);
-        existing.ws.close(WS_CLOSE_SESSION_REPLACED, "Session replaced.");
+        replaceExistingSession(tokenSub);
       } else {
         // Enforce role-specific connection limits
         if (tokenRole === "buzzer" && buzzersConnected() >= MAX_BUZZERS) {
@@ -151,8 +156,7 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         if (tokenRole === "admin" && adminConnected() >= 1) {
           for (const [existingSub, entry] of registry) {
             if (entry.role === "admin") {
-              registry.delete(existingSub);
-              entry.ws.close(WS_CLOSE_SESSION_REPLACED, "Session replaced.");
+              replaceExistingSession(existingSub);
               break;
             }
           }
@@ -204,10 +208,8 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
 
     ws.on("error", (err) => {
       logError("INTERNAL_ERROR", { message: err.message, ip });
-      try {
+      if (ws.readyState === WebSocket.OPEN) {
         ws.close(1011, "Internal server error.");
-      } catch {
-        // already closed
       }
     });
   });
