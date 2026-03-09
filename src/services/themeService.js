@@ -8,6 +8,7 @@ import {
   updateTheme,
   deleteTheme
 } from "../repositories/themeRepository.js";
+import { countQuestionsByTheme } from "../repositories/questionRepository.js";
 
 /** Regex de validation du nom (CA-3) */
 const NAME_REGEX = /^[\p{Lu}][\p{L}\p{N} '\-]{1,38}[\p{L}\p{N}]$/u;
@@ -168,6 +169,7 @@ export function updateThemeById(db, id, name) {
 
 /**
  * Supprime un thème (CA-28 à CA-31).
+ * Implémente la garde CA-30 de l'US-003 : refuse la suppression si des questions sont associées.
  */
 export function deleteThemeById(db, id) {
   validateUuid(id);
@@ -177,8 +179,15 @@ export function deleteThemeById(db, id) {
     throw new AppError(404, "NOT_FOUND", "The requested theme was not found.");
   }
 
-  // TODO[CA-30]: Réactiver un garde bloquant la suppression lorsque des questions sont associées au thème
-  // (à implémenter une fois la gestion des questions disponible).
+  // CA-30 (implémenté dans l'US-004) : Refuser la suppression si des questions sont liées
+  const questionCount = countQuestionsByTheme(db, id);
+  if (questionCount > 0) {
+    throw new AppError(
+      409,
+      "THEME_HAS_QUESTIONS",
+      "Cannot delete this theme: questions are still associated with it."
+    );
+  }
 
   deleteTheme(db, id);
 }
