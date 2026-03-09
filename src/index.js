@@ -11,6 +11,7 @@ import {
 import {
   createQuestionsCollectionHandler,
   createQuestionResourceHandler,
+  createQuestionsBulkHandler,
 } from "./routes/questionRoute.js";
 import { startServer } from "./server.js";
 
@@ -34,6 +35,9 @@ const themeResourceHandler = createThemeResourceHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const questionsCollectionHandler = createQuestionsCollectionHandler(
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const questionsBulkHandler = createQuestionsBulkHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const questionResourceHandler = createQuestionResourceHandler(
@@ -67,6 +71,12 @@ function requestHandler(req, res) {
   // Routes questions — collection
   if (url.pathname === "/api/v1/questions") {
     questionsCollectionHandler(req, res, url);
+    return;
+  }
+
+  // Routes questions — insertion en lot (AVANT /:id pour éviter que "bulk" soit interprété comme un ID)
+  if (url.pathname === "/api/v1/questions/bulk") {
+    questionsBulkHandler(req, res);
     return;
   }
 
