@@ -13,6 +13,7 @@ import {
   createQuestionResourceHandler,
 } from "./routes/questionRoute.js";
 import { startServer } from "./server.js";
+import { attachWebSocket } from "./websocket/wsServer.js";
 
 const config = loadEnv();
 const db = openDatabase();
@@ -86,4 +87,5 @@ function requestHandler(req, res) {
   }));
 }
 
-startServer({ port: config.port, requestHandler });
+startServer({ port: config.port, requestHandler })
+  .then((server) => attachWebSocket(server, db, config.jwtSecret));

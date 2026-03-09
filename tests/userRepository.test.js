@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import {
+  findById,
   findByUsername,
   countUsers,
   insertUser,
@@ -88,6 +89,28 @@ describe("userRepository", () => {
 
       expect(findByUsername(db, "testuser")).toBeDefined();
       expect(findByUsername(db, "TESTUSER")).toBeDefined();
+    });
+  });
+
+  describe("findById", () => {
+    it("should return undefined for a non-existent ID", () => {
+      expect(findById(db, "unknown-id")).toBeUndefined();
+    });
+
+    it("should return the user for a known ID", () => {
+      insertUser(db, {
+        id: "uuid-42",
+        username: "buzzer01",
+        password: "hashed",
+        role: "buzzer",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+
+      const user = findById(db, "uuid-42");
+      expect(user).toBeDefined();
+      expect(user.USR_ID).toBe("uuid-42");
+      expect(user.USR_USERNAME).toBe("buzzer01");
+      expect(user.USR_ROLE).toBe("buzzer");
     });
   });
 });

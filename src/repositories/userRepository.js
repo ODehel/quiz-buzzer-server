@@ -5,6 +5,19 @@
 
 /**
  * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ * @returns {{ USR_ID: string, USR_USERNAME: string, USR_ROLE: string } | undefined}
+ */
+export function findById(db, id) {
+  return db
+    .prepare(
+      "SELECT USR_ID, USR_USERNAME, USR_ROLE FROM T_USER_USR WHERE USR_ID = ?"
+    )
+    .get(id);
+}
+
+/**
+ * @param {import("better-sqlite3").Database} db
  * @param {string} username
  * @returns {{ USR_ID: string, USR_USERNAME: string, USR_PASSWORD: string, USR_ROLE: string } | undefined}
  */
