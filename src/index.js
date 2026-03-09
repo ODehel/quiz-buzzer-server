@@ -8,26 +8,36 @@ import {
   createThemesCollectionHandler,
   createThemeResourceHandler,
 } from "./routes/themeRoute.js";
+import {
+  createQuestionsCollectionHandler,
+  createQuestionResourceHandler,
+} from "./routes/questionRoute.js";
 import { startServer } from "./server.js";
 
 const config = loadEnv();
 const db = openDatabase();
 
-// Middlewares réutilisables (DRY — CA-32, CA-33)
+// Middlewares réutilisables (DRY — CA-32, CA-33 / CA-80, CA-81)
 const authenticate = createAuthenticateMiddleware(config.jwtSecret);
 const authorize = createAuthorizeMiddleware("admin");
 
 // Rate limiters
 const tokenRateLimiter = new RateLimiter(5, 60_000);
-const themeRateLimiter = new RateLimiter(100, 60_000); // CA-34 : 100 req/min
+const apiRateLimiter = new RateLimiter(100, 60_000); // CA-34 / CA-82 : 100 req/min
 
 // Handlers
 const tokenHandler = createTokenHandler(db, config, tokenRateLimiter);
 const themesCollectionHandler = createThemesCollectionHandler(
-  db, config, authenticate, authorize, themeRateLimiter
+  db, config, authenticate, authorize, apiRateLimiter
 );
 const themeResourceHandler = createThemeResourceHandler(
-  db, config, authenticate, authorize, themeRateLimiter
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const questionsCollectionHandler = createQuestionsCollectionHandler(
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const questionResourceHandler = createQuestionResourceHandler(
+  db, config, authenticate, authorize, apiRateLimiter
 );
 
 /**
@@ -51,6 +61,19 @@ function requestHandler(req, res) {
   const themeMatch = url.pathname.match(/^\/api\/v1\/themes\/([^/]+)$/);
   if (themeMatch) {
     themeResourceHandler(req, res, url);
+    return;
+  }
+
+  // Routes questions — collection
+  if (url.pathname === "/api/v1/questions") {
+    questionsCollectionHandler(req, res, url);
+    return;
+  }
+
+  // Routes questions — ressource individuelle (/api/v1/questions/:id)
+  const questionMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)$/);
+  if (questionMatch) {
+    questionResourceHandler(req, res, url);
     return;
   }
 
