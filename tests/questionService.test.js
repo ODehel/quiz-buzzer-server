@@ -563,13 +563,22 @@ describe("validateChoices edge cases", () => {
     })).toThrow(AppError);
   });
 
-  test("choice too long (> 40 chars)", () => {
+  test("choice too long (> 100 chars)", () => {
     expect(() => createQuestion(db, {
       type: "MCQ", theme_id: themeId,
       title: "Quelle est la capitale de la France ?",
-      choices: ["Paris", "L".repeat(41), "Marseille", "Toulouse"],
+      choices: ["Paris", "L".repeat(101), "Marseille", "Toulouse"],
       correct_answer: "Paris", level: 1, time_limit: 30, points: 10,
     })).toThrow(AppError);
+  });
+
+  test("choice of exactly 100 chars is valid", () => {
+    expect(() => createQuestion(db, {
+      type: "MCQ", theme_id: themeId,
+      title: "Quelle est la capitale de la France ?",
+      choices: ["Paris", "L".repeat(100), "Marseille", "Toulouse"],
+      correct_answer: "Paris", level: 1, time_limit: 30, points: 10,
+    })).not.toThrow();
   });
 });
 
@@ -591,12 +600,20 @@ describe("validateCorrectAnswer edge cases", () => {
     })).toThrow(AppError);
   });
 
-  test("correct_answer too long (> 40 chars) for SPEED", () => {
+  test("correct_answer too long (> 100 chars) for SPEED", () => {
     expect(() => createQuestion(db, {
       type: "SPEED", theme_id: themeId,
       title: "Quel est le plus grand océan du monde ?",
-      correct_answer: "R".repeat(41), level: 2, time_limit: 15, points: 20,
+      correct_answer: "R".repeat(101), level: 2, time_limit: 15, points: 20,
     })).toThrow(AppError);
+  });
+
+  test("correct_answer of exactly 100 chars is valid for SPEED", () => {
+    expect(() => createQuestion(db, {
+      type: "SPEED", theme_id: themeId,
+      title: "Quel est le plus grand océan du monde ?",
+      correct_answer: "R".repeat(100), level: 2, time_limit: 15, points: 20,
+    })).not.toThrow();
   });
 });
 
