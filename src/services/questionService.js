@@ -83,8 +83,8 @@ function validateChoices(choices) {
       throw new AppError(400, "VALIDATION_ERROR", `Choice ${i + 1} must be a string.`);
     }
     const trimmed = c.trim();
-    if (trimmed.length === 0 || trimmed.length > 40) {
-      throw new AppError(400, "VALIDATION_ERROR", `Choice ${i + 1} must be between 1 and 40 characters.`);
+    if (trimmed.length === 0 || trimmed.length > 100) {
+      throw new AppError(400, "VALIDATION_ERROR", `Choice ${i + 1} must be between 1 and 100 characters.`);
     }
     return trimmed;
   });
@@ -102,7 +102,7 @@ function validateChoices(choices) {
 /**
  * Valide le correct_answer.
  * - CA-10 (MCQ) : doit correspondre à l'un des 4 choix (insensible à la casse).
- * - CA-12 (SPEED) : chaîne non vide, 1–40 caractères.
+ * - CA-12 (SPEED) : chaîne non vide, 1–100 caractères.
  * @param {unknown} correctAnswer
  * @param {string[]|null} choices - Tableau des 4 choix pour MCQ, null pour SPEED
  * @returns {string} correct_answer normalisé (trimmed)
@@ -116,8 +116,8 @@ function validateCorrectAnswer(correctAnswer, choices) {
   if (trimmed.length === 0) {
     throw new AppError(400, "VALIDATION_ERROR", "correct_answer must not be empty.");
   }
-  if (trimmed.length > 40) {
-    throw new AppError(400, "VALIDATION_ERROR", "correct_answer must not exceed 40 characters.");
+  if (trimmed.length > 100) {
+    throw new AppError(400, "VALIDATION_ERROR", "correct_answer must not exceed 100 characters.");
   }
 
   if (choices !== null) {
