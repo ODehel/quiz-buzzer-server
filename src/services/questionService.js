@@ -3,6 +3,7 @@ import { AppError } from "../errors/AppError.js";
 import { findById as findThemeById } from "../repositories/themeRepository.js";
 import {
   insertQuestion,
+  insertQuestions,
   findQuestionById,
   findQuestionByTitle,
   findQuestions,
@@ -438,6 +439,216 @@ export function createQuestion(db, body) {
     QST_IMAGE_PATH: null, QST_AUDIO_PATH: null,
     QST_CREATED_AT: now, QST_LAST_UPDATED_AT: null,
   });
+}
+
+/**
+ * Crée plusieurs questions en une seule opération atomique (bulk insert).
+ * @param {import("better-sqlite3").Database} db
+ * @param {Object} body - Doit contenir une clé `questions` (tableau)
+ * @returns {{ created_count: number, questions: Object[] }}
+ */
+export function createQuestions(db, body) {
+  if (body === null || typeof body !== "object" || Array.isArray(body)) {
+    throw new AppError(400, "VALIDATION_ERROR", "Request body must be a JSON object.");
+  }
+
+  if (!("questions" in body)) {
+    throw new AppError(400, "VALIDATION_ERROR", "Body must contain a 'questions' array.");
+  }
+
+  const { questions } = body;
+
+  if (!Array.isArray(questions)) {
+    throw new AppError(400, "VALIDATION_ERROR", "'questions' must be an array.");
+  }
+
+  if (questions.length === 0) {
+    throw new AppError(400, "VALIDATION_ERROR", "'questions' array must not be empty.");
+  }
+
+  if (questions.length > 50) {
+    throw new AppError(400, "VALIDATION_ERROR", "'questions' array must not exceed 50 elements.");
+  }
+
+  // Detect duplicate titles within the batch (case-insensitive)
+  const batchTitlesLower = new Map(); // normalizedLower -> index
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    if (q !== null && typeof q === "object" && !Array.isArray(q) && typeof q.title === "string") {
+      const normalized = normalizeTitle(String(q.title));
+      const lower = normalized.toLowerCase();
+      if (batchTitlesLower.has(lower)) {
+        throw new AppError(409, "QUESTION_ALREADY_EXISTS",
+          `[index ${i}] A question with this title already exists (duplicate of index ${batchTitlesLower.get(lower)} in this batch).`);
+      }
+      batchTitlesLower.set(lower, i);
+    }
+  }
+
+  // Validate each question individually and prepare DB records
+  const now = new Date().toISOString();
+  const records = [];
+  const apiResults = [];
+
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const prefix = `[index ${i}] `;
+
+    // Must be a plain object
+    if (q === null || typeof q !== "object" || Array.isArray(q)) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}Each question must be a JSON object.`);
+    }
+
+    // Unknown fields
+    const unknownFields = Object.keys(q).filter((k) => !ALLOWED_FIELDS_POST.has(k));
+    if (unknownFields.length > 0) {
+      throw new AppError(400, "UNKNOWN_FIELDS", `${prefix}Unknown field(s): ${unknownFields.join(", ")}.`);
+    }
+
+    // Validate type
+    const { type } = q;
+    if (type !== "MCQ" && type !== "SPEED") {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}Question type must be 'MCQ' or 'SPEED'.`);
+    }
+
+    // SPEED must not include choices
+    if (type === "SPEED" && "choices" in q) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}SPEED questions must not include choices.`);
+    }
+
+    // Validate theme_id
+    const { theme_id } = q;
+    if (theme_id === undefined || theme_id === null) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}theme_id is required.`);
+    }
+    if (typeof theme_id !== "string" || !UUID_REGEX.test(theme_id)) {
+      throw new AppError(400, "INVALID_UUID", `${prefix}The provided ID is not a valid UUID.`);
+    }
+    const theme = findThemeById(db, theme_id);
+    if (!theme) {
+      throw new AppError(400, "INVALID_THEME", `${prefix}The provided theme_id does not reference an existing theme.`);
+    }
+
+    // Validate title
+    if (q.title === undefined || q.title === null) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}Question title is required.`);
+    }
+    const title = normalizeTitle(String(q.title));
+    try {
+      validateTitle(title);
+    } catch (err) {
+      if (err instanceof AppError) {
+        throw new AppError(err.status, err.error, `${prefix}${err.message}`);
+      }
+      throw err;
+    }
+
+    // Check for duplicate title in DB
+    const existingTitle = findQuestionByTitle(db, title);
+    if (existingTitle) {
+      throw new AppError(409, "QUESTION_ALREADY_EXISTS",
+        `${prefix}A question with this title already exists.`);
+    }
+
+    // Validate choices (MCQ only)
+    let choices = null;
+    if (type === "MCQ") {
+      if (q.choices === undefined) {
+        throw new AppError(400, "VALIDATION_ERROR", `${prefix}MCQ questions must include choices.`);
+      }
+      try {
+        choices = validateChoices(q.choices);
+      } catch (err) {
+        if (err instanceof AppError) {
+          throw new AppError(err.status, err.error, `${prefix}${err.message}`);
+        }
+        throw err;
+      }
+    }
+
+    // Validate correct_answer
+    if (q.correct_answer === undefined || q.correct_answer === null) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}correct_answer is required.`);
+    }
+    let correctAnswer;
+    try {
+      correctAnswer = validateCorrectAnswer(q.correct_answer, choices);
+    } catch (err) {
+      if (err instanceof AppError) {
+        throw new AppError(err.status, err.error, `${prefix}${err.message}`);
+      }
+      throw err;
+    }
+
+    // Validate level, time_limit, points
+    if (q.level === undefined || q.level === null) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}level is required.`);
+    }
+    let level;
+    try {
+      level = validateIntRange(q.level, "level", 1, 5);
+    } catch (err) {
+      if (err instanceof AppError) {
+        throw new AppError(err.status, err.error, `${prefix}${err.message}`);
+      }
+      throw err;
+    }
+
+    if (q.time_limit === undefined || q.time_limit === null) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}time_limit is required.`);
+    }
+    let timeLimit;
+    try {
+      timeLimit = validateIntRange(q.time_limit, "time_limit", 5, 60);
+    } catch (err) {
+      if (err instanceof AppError) {
+        throw new AppError(err.status, err.error, `${prefix}${err.message}`);
+      }
+      throw err;
+    }
+
+    if (q.points === undefined || q.points === null) {
+      throw new AppError(400, "VALIDATION_ERROR", `${prefix}points is required.`);
+    }
+    let points;
+    try {
+      points = validateIntRange(q.points, "points", 1, 50);
+    } catch (err) {
+      if (err instanceof AppError) {
+        throw new AppError(err.status, err.error, `${prefix}${err.message}`);
+      }
+      throw err;
+    }
+
+    const id = uuidv7();
+    records.push({
+      id, type, themeId: theme_id, title,
+      choiceA: choices ? choices[0] : null,
+      choiceB: choices ? choices[1] : null,
+      choiceC: choices ? choices[2] : null,
+      choiceD: choices ? choices[3] : null,
+      correctAnswer, level, timeLimit, points, createdAt: now,
+    });
+
+    apiResults.push(toApiFormat({
+      QST_ID: id, QST_TYPE: type, QST_THEME_ID: theme_id, QST_TITLE: title,
+      QST_CHOICE_A: choices ? choices[0] : null,
+      QST_CHOICE_B: choices ? choices[1] : null,
+      QST_CHOICE_C: choices ? choices[2] : null,
+      QST_CHOICE_D: choices ? choices[3] : null,
+      QST_CORRECT_ANSWER: correctAnswer, QST_LEVEL: level,
+      QST_TIME_LIMIT: timeLimit, QST_POINTS: points,
+      QST_IMAGE_PATH: null, QST_AUDIO_PATH: null,
+      QST_CREATED_AT: now, QST_LAST_UPDATED_AT: null,
+    }));
+  }
+
+  insertQuestions(db, records);
+
+  return {
+    created_count: records.length,
+    questions: apiResults,
+  };
 }
 
 /**

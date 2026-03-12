@@ -5,6 +5,7 @@ import { parseJsonBody } from "../utils/parseJsonBody.js";
 import { logError } from "../utils/logger.js";
 import {
   createQuestion,
+  createQuestions,
   getQuestion,
   listQuestions,
   updateQuestionById,
@@ -160,6 +161,58 @@ export function createQuestionResourceHandler(db, config, authenticate, authoriz
       deleteQuestionById(db, id);
       res.writeHead(204);
       res.end();
+
+    } catch (err) {
+      handleError(res, err);
+    }
+  };
+}
+
+/**
+ * Crée le handler pour POST /api/v1/questions/bulk.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {{ jwtSecret: string }} config
+ * @param {Function} authenticate
+ * @param {Function} authorize
+ * @param {import("../middlewares/rateLimiter.js").RateLimiter} rateLimiter
+ */
+export function createQuestionsBulkHandler(db, config, authenticate, authorize, rateLimiter) {
+  return async (req, res) => {
+    try {
+      // Rate limiting
+      const ip = req.socket.remoteAddress || "unknown";
+      const rateCheck = rateLimiter.check(ip);
+      if (!rateCheck.allowed) {
+        const retryAfter = rateCheck.retryAfter ?? 60;
+        sendJson(res, 429, {
+          status: 429,
+          error: "RATE_LIMIT_EXCEEDED",
+          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
+        }, { "Retry-After": String(retryAfter) });
+        return;
+      }
+
+      // Only POST is allowed
+      if (req.method !== "POST") {
+        sendJson(res, 405, {
+          status: 405,
+          error: "METHOD_NOT_ALLOWED",
+          message: `HTTP method ${req.method} is not allowed on this resource.`,
+        }, { Allow: "POST" });
+        return;
+      }
+
+      // Authentification + Autorisation
+      authenticate(req);
+      authorize(req);
+
+      // Content-Type
+      validateContentType(req);
+
+      const body = await parseJsonBody(req);
+      const result = createQuestions(db, body);
+      sendJson(res, 201, result);
 
     } catch (err) {
       handleError(res, err);

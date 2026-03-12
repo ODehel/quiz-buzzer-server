@@ -165,6 +165,35 @@ export function deleteQuestion(db, id) {
 }
 
 /**
+ * Insère plusieurs questions en une seule transaction atomique.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {Array<{ id, type, themeId, title, choiceA, choiceB, choiceC, choiceD,
+ *                 correctAnswer, level, timeLimit, points, createdAt }>} questions
+ */
+export function insertQuestions(db, questions) {
+  const stmt = db.prepare(
+    `INSERT INTO T_QUESTION_QST (
+       QST_ID, QST_TYPE, QST_THEME_ID, QST_TITLE,
+       QST_CHOICE_A, QST_CHOICE_B, QST_CHOICE_C, QST_CHOICE_D,
+       QST_CORRECT_ANSWER, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CREATED_AT
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
+  const insertAll = db.transaction((qs) => {
+    for (const q of qs) {
+      stmt.run(
+        q.id, q.type, q.themeId, q.title,
+        q.choiceA ?? null, q.choiceB ?? null, q.choiceC ?? null, q.choiceD ?? null,
+        q.correctAnswer, q.level, q.timeLimit, q.points, q.createdAt
+      );
+    }
+  });
+
+  insertAll(questions);
+}
+
+/**
  * Compte les questions associées à un thème (pour la garde de suppression CA-30 de l'US-003).
  *
  * @param {import("better-sqlite3").Database} db
