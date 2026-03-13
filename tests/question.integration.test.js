@@ -833,3 +833,134 @@ describe("GET /api/v1/questions — time_limit and points filters", () => {
     });
   });
 });
+// ─── CA-25 : GET /:id body silently ignored ────────────────────────────────────
+describe("GET /api/v1/questions/:id — CA-25 body ignored", () => {
+  test("CA-25 - body on GET /:id is ignored silently", async () => {
+    const created = await createMcqQuestion();
+    const res = await request(server)
+      .get(`/api/v1/questions/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ unexpected: "body" });
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(created.body.id);
+  });
+});
+
+// ─── CA-31 : Page au-delà du total → données vides ────────────────────────────
+describe("GET /api/v1/questions — CA-31 page beyond total", () => {
+  test("CA-31 - page beyond total returns empty data with correct metadata", async () => {
+    await createMcqQuestion();
+    const res = await request(server)
+      .get("/api/v1/questions?page=100&limit=20")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(1);
+    expect(res.body.page).toBe(100);
+  });
+});
+
+// ─── CA-39 : Combinaison de plusieurs filtres ──────────────────────────────────
+describe("GET /api/v1/questions — CA-39 combined filters", () => {
+  test("CA-39 - combining type and level filters returns only matching questions", async () => {
+    await createMcqQuestion({ title: "Quelle est la capitale de la France ?", level: 1 });
+    await createMcqQuestion({ title: "Quelle est la capitale de l'Allemagne ?", level: 2 });
+    await createSpeedQuestion({ title: "Quel est le plus grand océan du monde ?", level: 1 });
+
+    const res = await request(server)
+      .get("/api/v1/questions?type=MCQ&level=1")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].type).toBe("MCQ");
+    expect(res.body.data[0].level).toBe(1);
+  });
+});
+
+// ─── CA-46 : PUT SPEED question successful update (integration) ────────────────
+describe("PUT /api/v1/questions/:id — CA-46 SPEED update", () => {
+  test("CA-46 - full update of SPEED question", async () => {
+    const created = await createSpeedQuestion();
+    const res = await request(server)
+      .put(`/api/v1/questions/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        type: "SPEED",
+        theme_id: themeId,
+        title: "Quelle est la plus grande planète du système solaire ?",
+        correct_answer: "Jupiter",
+        level: 3,
+        time_limit: 20,
+        points: 15,
+      });
+    expect(res.status).toBe(200);
+    expect(res.body.type).toBe("SPEED");
+    expect(res.body.title).toBe("Quelle est la plus grande planète du système solaire ?");
+    expect(res.body.correct_answer).toBe("Jupiter");
+    expect(res.body.last_updated_at).not.toBeNull();
+  });
+});
+
+// ─── CA-51 : PUT title conflict (integration) ─────────────────────────────────
+describe("PUT /api/v1/questions/:id — CA-51 title conflict", () => {
+  test("CA-51 - title conflict with another question on PUT → 409", async () => {
+    const other = await createSpeedQuestion({ title: "Quel est le plus grand continent du monde ?" });
+    const toUpdate = await createMcqQuestion();
+    const res = await request(server)
+      .put(`/api/v1/questions/${toUpdate.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        type: "MCQ",
+        theme_id: themeId,
+        title: other.body.title,
+        choices: ["Paris", "Lyon", "Marseille", "Toulouse"],
+        correct_answer: "Paris",
+        level: 1,
+        time_limit: 30,
+        points: 10,
+      });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("QUESTION_ALREADY_EXISTS");
+  });
+});
+
+// ─── CA-77 : DELETE body silently ignored ─────────────────────────────────────
+describe("DELETE /api/v1/questions/:id — CA-77 body ignored", () => {
+  test("CA-77 - body on DELETE is ignored silently", async () => {
+    const created = await createMcqQuestion();
+    const res = await request(server)
+      .delete(`/api/v1/questions/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ unexpected: "body" });
+    expect(res.status).toBe(204);
+  });
+});
+
+// ─── CA-84 : Internal server error → 500 ──────────────────────────────────────
+describe("CA-84 — Internal server error on questions", () => {
+  test("CA-84 - 500 on unexpected failure in collection handler", async () => {
+    const Database = (await import("better-sqlite3")).default;
+    const { createQuestionsCollectionHandler: collHandler } = await import("../src/routes/questionRoute.js");
+
+    const brokenDb = new Database(":memory:");
+    brokenDb.close();
+
+    const brokenHandler = collHandler(
+      brokenDb, config,
+      createAuthenticateMiddleware(JWT_SECRET),
+      createAuthorizeMiddleware("admin"),
+      new RateLimiter(100, 60_000)
+    );
+    const brokenServer = createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost`);
+      brokenHandler(req, res, url);
+    });
+
+    const res = await request(brokenServer)
+      .get("/api/v1/questions")
+      .set("Authorization", `Bearer ${jwt.sign({ sub: "id", role: "admin" }, JWT_SECRET, { algorithm: "HS256", expiresIn: 3600 })}`);
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe("INTERNAL_SERVER_ERROR");
+  });
+});

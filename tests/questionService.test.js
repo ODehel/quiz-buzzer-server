@@ -891,3 +891,60 @@ describe("patchQuestionById additional coverage", () => {
     expect(updated.correct_answer).toBe("Atlantique");
   });
 });
+// ─── CA-46: PUT SPEED question successful update ───────────────────────────────
+
+describe("CA-46: updateQuestionById — SPEED question", () => {
+  let speedQuestionId;
+
+  beforeEach(() => {
+    const sq = createQuestion(db, {
+      type: "SPEED", theme_id: themeId,
+      title: "Quel est le plus grand océan du monde ?",
+      correct_answer: "Pacifique", level: 2, time_limit: 15, points: 20,
+    });
+    speedQuestionId = sq.id;
+  });
+
+  // CA-46 : Modifier une question SPEED avec tous les champs valides
+  test("CA-46: updates SPEED question and sets last_updated_at", () => {
+    const updated = updateQuestionById(db, speedQuestionId, {
+      type: "SPEED", theme_id: themeId,
+      title: "Quelle est la plus grande planète du système solaire ?",
+      correct_answer: "Jupiter", level: 3, time_limit: 20, points: 15,
+    });
+    expect(updated.type).toBe("SPEED");
+    expect(updated.title).toBe("Quelle est la plus grande planète du système solaire ?");
+    expect(updated.correct_answer).toBe("Jupiter");
+    expect(updated.level).toBe(3);
+    expect(updated.last_updated_at).not.toBeNull();
+    expect(updated.choices).toBeUndefined();
+  });
+});
+
+// ─── CA-62: PATCH theme_id to a valid existing theme ──────────────────────────
+
+describe("CA-62: patchQuestionById — theme_id update", () => {
+  let questionId;
+  const secondThemeId = "018e4f5a-8c3b-7d2e-9f1a-000000000002";
+
+  beforeEach(() => {
+    db.prepare(
+      "INSERT INTO T_THEME_THM (THM_ID, THM_NAME, THM_CREATED_AT) VALUES (?, ?, ?)"
+    ).run(secondThemeId, "Sciences", "2026-03-09T11:00:00.000Z");
+
+    const q = createQuestion(db, {
+      type: "MCQ", theme_id: themeId,
+      title: "Quelle est la capitale de la France ?",
+      choices: ["Paris", "Lyon", "Marseille", "Toulouse"],
+      correct_answer: "Paris", level: 1, time_limit: 30, points: 10,
+    });
+    questionId = q.id;
+  });
+
+  // CA-62 : Modification du theme_id vers un thème existant
+  test("CA-62: patches theme_id to an existing theme", () => {
+    const updated = patchQuestionById(db, questionId, { theme_id: secondThemeId });
+    expect(updated.theme_id).toBe(secondThemeId);
+    expect(updated.last_updated_at).not.toBeNull();
+  });
+});

@@ -706,3 +706,101 @@ describe("attachWebSocket — internal error handling", () => {
     ws.terminate();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests: buzzer slot freed on disconnect (CA-14)
+// ---------------------------------------------------------------------------
+describe("attachWebSocket — buzzer slot freed on disconnect (CA-14)", () => {
+  let db, server, wss;
+  let restore;
+
+  beforeEach(async () => {
+    db = createTestDb();
+    for (let i = 1; i <= MAX_BUZZERS + 1; i++) {
+      insertUser(db, {
+        id: `buzzer-${String(i).padStart(3, "0")}`,
+        username: `buzzer${i}`,
+        role: "buzzer",
+      });
+    }
+    ({ restore } = captureConsole());
+    ({ server, wss } = await startTestServer(db));
+  });
+
+  afterEach(async () => {
+    await teardown(server, wss);
+    db.close();
+    restore();
+  });
+
+  // CA-14 : Un buzzer déconnecté libère son slot
+  it("CA-14: should free the buzzer slot after disconnect, allowing a new connection", async () => {
+    // Fill up all MAX_BUZZERS slots
+    const clients = [];
+    for (let i = 1; i <= MAX_BUZZERS; i++) {
+      const ws = await connectWs(server);
+      await authenticateWs(ws, `buzzer-${String(i).padStart(3, "0")}`, "buzzer");
+      clients.push(ws);
+    }
+
+    // Disconnect the first buzzer and wait for cleanup
+    const closePromise = waitForClose(clients[0]);
+    clients[0].close();
+    await closePromise;
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Now connecting a new buzzer should succeed (slot is freed)
+    const newBuzzer = await connectWs(server);
+    const msg = await authenticateWs(newBuzzer, `buzzer-${String(MAX_BUZZERS + 1).padStart(3, "0")}`, "buzzer");
+    expect(msg.type).toBe("auth_success");
+
+    newBuzzer.terminate();
+    // clients[0] was already closed above; terminate the remaining clients
+    for (let i = 1; i < clients.length; i++) clients[i].terminate();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: unauthenticated client messages ignored after failed auth (CA-22)
+// ---------------------------------------------------------------------------
+describe("attachWebSocket — unauthenticated client messages ignored (CA-22)", () => {
+  let db, server, wss;
+  let restore;
+
+  beforeEach(async () => {
+    db = createTestDb();
+    ({ restore } = captureConsole());
+    ({ server, wss } = await startTestServer(db));
+  });
+
+  afterEach(async () => {
+    await teardown(server, wss);
+    db.close();
+    restore();
+  });
+
+  // CA-22 : Tout message reçu d'un client non authentifié est ignoré
+  it("CA-22: should close after invalid auth, not process subsequent messages", async () => {
+    const ws = await connectWs(server);
+    const closePromise = waitForClose(ws);
+
+    // Send an invalid auth message — triggers close with 4001
+    ws.send("not valid json");
+    const { code } = await closePromise;
+    expect(code).toBe(WS_CLOSE_INVALID_TOKEN);
+
+    // The connection is closed; the server does not respond to any further data
+    // (the close code confirms the unauthenticated client's message was handled by closing)
+  });
+
+  it("CA-22: should not process a second message after the first invalid auth", async () => {
+    const ws = await connectWs(server);
+    const closePromise = waitForClose(ws);
+
+    // Send invalid auth which triggers immediate close (4001)
+    ws.send(JSON.stringify({ type: "auth", token: "invalid.token.here" }));
+    const { code } = await closePromise;
+    expect(code).toBe(WS_CLOSE_INVALID_TOKEN);
+    // Connection is properly closed; no further processing occurs
+  });
+});

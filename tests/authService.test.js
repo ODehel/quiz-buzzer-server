@@ -24,6 +24,8 @@ function createTestDb() {
 
 describe("authService.authenticate", () => {
   let db;
+  let originalLog, originalWarn;
+  let capturedLogs, capturedWarns;
 
   beforeAll(async () => {
     db = createTestDb();
@@ -31,6 +33,20 @@ describe("authService.authenticate", () => {
     db.prepare(
       "INSERT INTO T_USER_USR (USR_ID, USR_USERNAME, USR_PASSWORD, USR_ROLE, USR_CREATED_AT) VALUES (?,?,?,?,?)"
     ).run("018e4f5a-0000-7000-8000-000000000001", "testadmin", hash, "admin", new Date().toISOString());
+  });
+
+  beforeEach(() => {
+    capturedLogs = [];
+    capturedWarns = [];
+    originalLog = console.log;
+    originalWarn = console.warn;
+    console.log = (msg) => capturedLogs.push(msg);
+    console.warn = (msg) => capturedWarns.push(msg);
+  });
+
+  afterEach(() => {
+    console.log = originalLog;
+    console.warn = originalWarn;
   });
 
   afterAll(() => db.close());
@@ -58,5 +74,31 @@ describe("authService.authenticate", () => {
   it("should be case-insensitive for username (COLLATE NOCASE)", async () => {
     const result = await authenticate(db, TEST_CONFIG, "TESTADMIN", "ValidPassword1!", "127.0.0.1");
     expect(result).toHaveProperty("token");
+  });
+
+  // CA-14 : Les connexions réussies sont loggées
+  it("CA-14: should log LOGIN_SUCCESS on successful authentication", async () => {
+    await authenticate(db, TEST_CONFIG, "testadmin", "ValidPassword1!", "10.0.0.1");
+
+    expect(capturedLogs).toHaveLength(1);
+    const log = JSON.parse(capturedLogs[0]);
+    expect(log.level).toBe("INFO");
+    expect(log.event).toBe("LOGIN_SUCCESS");
+    expect(log.username).toBe("testadmin");
+    expect(log.ip).toBe("10.0.0.1");
+    expect(log).toHaveProperty("timestamp");
+  });
+
+  // CA-15 : Les connexions échouées sont loggées
+  it("CA-15: should log LOGIN_FAILURE on failed authentication", async () => {
+    await authenticate(db, TEST_CONFIG, "testadmin", "WrongPassword!!", "10.0.0.2").catch(() => {});
+
+    expect(capturedWarns).toHaveLength(1);
+    const log = JSON.parse(capturedWarns[0]);
+    expect(log.level).toBe("WARN");
+    expect(log.event).toBe("LOGIN_FAILURE");
+    expect(log.username).toBe("testadmin");
+    expect(log.ip).toBe("10.0.0.2");
+    expect(log).toHaveProperty("timestamp");
   });
 });

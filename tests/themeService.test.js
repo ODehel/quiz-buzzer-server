@@ -56,6 +56,11 @@ describe("createTheme", () => {
     expect(() => createTheme(db, "M-")).toThrow(); // ends with dash
   });
 
+  test("CA-3: rejects name longer than 40 characters", () => {
+    const longName = "Abcdefghijklmnopqrstuvwxyzabcdefghijklmnop"; // 42 chars
+    expect(() => createTheme(db, longName)).toThrow();
+  });
+
   test("CA-4: rejects duplicate name case insensitive", () => {
     createTheme(db, "Musique");
     expect(() => createTheme(db, "MUSIQUE")).toThrow();
