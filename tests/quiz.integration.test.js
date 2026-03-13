@@ -378,3 +378,166 @@ describe("DELETE /api/v1/quizzes/:id", () => {
     expect(res.status).toBe(401);
   });
 });
+// ─── CA-14 : Invalid JSON body ────────────────────────────────────────────────
+
+describe("POST /api/v1/quizzes — CA-14 invalid JSON body", () => {
+  it("CA-14: returns 400 for non-parseable body", async () => {
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send("{not valid json}");
+    expect(res.status).toBe(400);
+    // parseJsonBody shared utility uses INVALID_JSON for unparseable bodies
+    expect(["INVALID_JSON", "INVALID_BODY"]).toContain(res.body.error);
+  });
+});
+
+// ─── CA-21 : PUT name only (integration) ──────────────────────────────────────
+
+describe("PUT /api/v1/quizzes/:id — CA-21 name only update", () => {
+  it("CA-21: updates only the name without changing questions", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .put(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Nouveau titre de quiz", question_ids: makeQ(10) });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("Nouveau titre de quiz");
+    expect(res.body.last_updated_at).not.toBeNull();
+  });
+});
+
+// ─── CA-23 : Question list replaces old list entirely (integration) ────────────
+
+describe("PUT /api/v1/quizzes/:id — CA-23 question list replaced", () => {
+  it("CA-23: replaces question list entirely with new order", async () => {
+    const created = (await createValidQuiz()).body;
+
+    // Use questions 6-15 (reverse order) as the new list
+    const newList = makeQ(15).slice(5).reverse();
+    const res = await request(server)
+      .put(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: created.name, question_ids: newList });
+    expect(res.status).toBe(200);
+    expect(res.body.question_count).toBe(10);
+  });
+});
+
+// ─── CA-28 : PUT wrong Content-Type ────────────────────────────────────────────
+
+describe("PUT /api/v1/quizzes/:id — CA-28 wrong Content-Type", () => {
+  it("CA-28: returns 415 for non-JSON Content-Type on PUT", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .put(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "text/plain")
+      .send("not json");
+    expect(res.status).toBe(415);
+    expect(res.body.error).toBe("UNSUPPORTED_MEDIA_TYPE");
+  });
+});
+
+// ─── CA-40 : Rate limiting → 429 ──────────────────────────────────────────────
+
+describe("Rate limiting — CA-40", () => {
+  it("CA-40: returns 429 on collection when rate limit exceeded", async () => {
+    const limitedDb = openDatabase(":memory:");
+    const limitedRateLimiter = new RateLimiter(2, 60_000);
+    const limitedHandler = createQuizzesCollectionHandler(
+      limitedDb, config,
+      createAuthenticateMiddleware(JWT_SECRET),
+      createAuthorizeMiddleware("admin"),
+      limitedRateLimiter
+    );
+    const limitedServer = createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost`);
+      limitedHandler(req, res, url);
+    });
+    await new Promise((resolve) => limitedServer.listen(0, resolve));
+
+    try {
+      for (let i = 0; i < 2; i++) {
+        await request(limitedServer).get("/api/v1/quizzes").set("Authorization", `Bearer ${makeToken()}`);
+      }
+      const res = await request(limitedServer).get("/api/v1/quizzes").set("Authorization", `Bearer ${makeToken()}`);
+      expect(res.status).toBe(429);
+      expect(res.body.error).toBe("RATE_LIMIT_EXCEEDED");
+      expect(res.headers["retry-after"]).toBeDefined();
+    } finally {
+      limitedDb.close();
+      await new Promise((resolve) => limitedServer.close(resolve));
+    }
+  });
+
+  it("CA-40: returns 429 on resource when rate limit exceeded", async () => {
+    const limitedDb = openDatabase(":memory:");
+    const limitedRateLimiter = new RateLimiter(2, 60_000);
+    const limitedHandler = createQuizResourceHandler(
+      limitedDb, config,
+      createAuthenticateMiddleware(JWT_SECRET),
+      createAuthorizeMiddleware("admin"),
+      limitedRateLimiter
+    );
+    const limitedServer = createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost`);
+      limitedHandler(req, res, url);
+    });
+    await new Promise((resolve) => limitedServer.listen(0, resolve));
+
+    try {
+      for (let i = 0; i < 2; i++) {
+        await request(limitedServer)
+          .put("/api/v1/quizzes/018e4f5a-8c3b-7d2e-9f1a-000000000099")
+          .set("Authorization", `Bearer ${makeToken()}`)
+          .set("Content-Type", "application/json")
+          .send({ name: "Test", question_ids: makeQ(10) });
+      }
+      const res = await request(limitedServer)
+        .put("/api/v1/quizzes/018e4f5a-8c3b-7d2e-9f1a-000000000099")
+        .set("Authorization", `Bearer ${makeToken()}`)
+        .set("Content-Type", "application/json")
+        .send({ name: "Test", question_ids: makeQ(10) });
+      expect(res.status).toBe(429);
+      expect(res.body.error).toBe("RATE_LIMIT_EXCEEDED");
+      expect(res.headers["retry-after"]).toBeDefined();
+    } finally {
+      limitedDb.close();
+      await new Promise((resolve) => limitedServer.close(resolve));
+    }
+  });
+});
+
+// ─── CA-42 : Internal server error → 500 ──────────────────────────────────────
+
+describe("CA-42 — Internal server error on quizzes", () => {
+  it("CA-42: returns 500 on unexpected failure in collection handler", async () => {
+    const Database = (await import("better-sqlite3")).default;
+    const { createQuizzesCollectionHandler: brokenCollHandler } = await import("../src/routes/quizRoute.js");
+
+    const brokenDb = new Database(":memory:");
+    brokenDb.close();
+
+    const brokenHandler = brokenCollHandler(
+      brokenDb, config,
+      createAuthenticateMiddleware(JWT_SECRET),
+      createAuthorizeMiddleware("admin"),
+      new RateLimiter(100, 60_000)
+    );
+    const brokenServer = createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost`);
+      brokenHandler(req, res, url);
+    });
+
+    const res = await request(brokenServer)
+      .get("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${makeToken()}`);
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe("INTERNAL_SERVER_ERROR");
+  });
+});
