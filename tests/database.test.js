@@ -74,17 +74,17 @@ describe("openDatabase", () => {
       db.prepare(
         `INSERT INTO T_QUIZ_QUZ (QUZ_ID, QUZ_NAME, QUZ_CREATED_AT)
        VALUES (?, ?, ?)`
-      ).run("quiz-id-1", "Culture générale", "2026-03-13T10:00:00.000Z");
+      ).run("quiz-id-1", "Sciences exactes", "2026-03-13T10:00:00.000Z");
 
       const row = db.prepare("SELECT * FROM T_QUIZ_QUZ WHERE QUZ_ID = ?").get("quiz-id-1");
-      expect(row.QUZ_NAME).toBe("Culture générale");
+      expect(row.QUZ_NAME).toBe("Sciences exactes");
       expect(row.QUZ_LAST_UPDATED_AT).toBeNull();
 
       // UNIQUE COLLATE NOCASE
       expect(() =>
         db.prepare(
           `INSERT INTO T_QUIZ_QUZ (QUZ_ID, QUZ_NAME, QUZ_CREATED_AT) VALUES (?, ?, ?)`
-        ).run("quiz-id-2", "CULTURE GÉNÉRALE", "2026-03-13T10:00:00.000Z")
+        ).run("quiz-id-2", "SCIENCES EXACTES", "2026-03-13T10:00:00.000Z")
       ).toThrow();
     } finally {
       db.close();

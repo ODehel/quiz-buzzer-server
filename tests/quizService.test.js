@@ -24,7 +24,8 @@ function createTestDb() {
           QST_CORRECT_ANSWER, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CREATED_AT)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
-      `qst-${i}`, i % 2 === 0 ? "MCQ" : "SPEED", "thm-1",
+      `00000000-0000-7000-8000-${String(i).padStart(12, "0")}`,
+      i % 2 === 0 ? "MCQ" : "SPEED", "thm-1",
       `Question numéro ${i} valide pour un quiz de test ?`,
       "Réponse", (i % 5) + 1, 30, 5, "2026-03-13T10:00:00.000Z"
     );
@@ -32,8 +33,8 @@ function createTestDb() {
   return db;
 }
 
-const Q10 = Array.from({ length: 10 }, (_, i) => `qst-${i + 1}`);
-const Q12 = Array.from({ length: 12 }, (_, i) => `qst-${i + 1}`);
+const Q10 = Array.from({ length: 10 }, (_, i) => `00000000-0000-7000-8000-${String(i + 1).padStart(12, "0")}`);
+const Q12 = Array.from({ length: 12 }, (_, i) => `00000000-0000-7000-8000-${String(i + 1).padStart(12, "0")}`);
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -94,8 +95,8 @@ describe("createQuiz", () => {
 
   // CA-4 : Unicité insensible à la casse
   it("CA-4: rejects duplicate name (case-insensitive)", () => {
-    createQuiz(db, "Culture générale", Q10);
-    expect(() => createQuiz(db, "CULTURE GÉNÉRALE", Q10)).toThrow(
+    createQuiz(db, "Sciences du monde", Q10);
+    expect(() => createQuiz(db, "SCIENCES DU MONDE", Q10)).toThrow(
       expect.objectContaining({ status: 409, error: "CONFLICT" })
     );
   });

@@ -61,9 +61,9 @@ describe("quizRepository", () => {
     });
 
     it("throws on duplicate name (COLLATE NOCASE)", () => {
-      insertQuiz(db, { id: "quz-1", name: "Culture générale", createdAt: NOW });
+      insertQuiz(db, { id: "quz-1", name: "Sciences exactes", createdAt: NOW });
       expect(() =>
-        insertQuiz(db, { id: "quz-2", name: "CULTURE GÉNÉRALE", createdAt: NOW })
+        insertQuiz(db, { id: "quz-2", name: "SCIENCES EXACTES", createdAt: NOW })
       ).toThrow();
     });
   });
