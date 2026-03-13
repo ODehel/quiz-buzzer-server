@@ -11,6 +11,8 @@ import {
   createThemesCollectionHandler,
   createThemeResourceHandler,
 } from "../src/routes/themeRoute.js";
+import { insertQuiz, insertQuizQuestions } from "../src/repositories/quizRepository.js";
+import { v7 as uuidv7 } from "uuid";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 
@@ -246,226 +248,6 @@ describe("POST /api/v1/questions", () => {
     expect(res.headers.allow).toBe("GET, POST");
   });
 
-  // ─── Ajouts dans describe("POST /api/v1/quizzes") ────────────────────────────
-
-  // CA-14 : Body non parseable
-  it("CA-14: returns 400 INVALID_BODY for non-parseable body", async () => {
-    const res = await request(server)
-      .post("/api/v1/quizzes")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .set("Content-Type", "application/json")
-      .send("{ invalid json {{");
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe("INVALID_BODY");
-  });
-
-  // CA-38 étendu : GET sans token
-  it("CA-38: GET returns 401 without token", async () => {
-    const res = await request(server).get("/api/v1/quizzes");
-    expect(res.status).toBe(401);
-  });
-
-  // CA-39 étendu : GET avec rôle buzzer
-  it("CA-39: GET returns 403 for buzzer role", async () => {
-    const res = await request(server)
-      .get("/api/v1/quizzes")
-      .set("Authorization", `Bearer ${buzzerToken}`);
-    expect(res.status).toBe(403);
-  });
-
-  // CA-42 : Erreur serveur inattendue sur POST
-  it("CA-42: returns 500 on unexpected server error (POST)", async () => {
-    // On ferme la DB pour provoquer une erreur inattendue
-    db.close();
-    const res = await request(server)
-      .post("/api/v1/quizzes")
-      .set("Authorization", `Bearer ${adminToken}`)
-      .set("Content-Type", "application/json")
-      .send({ name: "Mon quiz", question_ids: makeQ(10) });
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe("INTERNAL_SERVER_ERROR");
-    // Rouvrir pour le afterEach (qui fait db.close())
-    db = openDatabase(":memory:");
-  });
-
-
-  // ─── Ajouts dans describe("PUT /api/v1/quizzes/:id") ─────────────────────────
-
-  // CA-21 : Modifier le nom seul
-  it("CA-21: allows updating name only without changing questions", async () => {
-    const created = (await createValidQuiz()).body;
-    const res = await request(server)
-      .put(`/api/v1/quizzes/${created.id}`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .set("Content-Type", "application/json")
-      .send({ name: "Culture générale renommée", question_ids: makeQ(10) });
-    expect(res.status).toBe(200);
-    expect(res.body.name).toBe("Culture générale renommée");
-    expect(res.body.question_count).toBe(10);
-    expect(res.body.last_updated_at).not.toBeNull();
-  });
-
-  // CA-23 : Remplacement complet de la liste
-  it("CA-23: replaces question list entirely and preserves new order", async () => {
-    const created = (await createValidQuiz()).body;
-    const newIds = [...makeQ(10)].reverse();
-    const res = await request(server)
-      .put(`/api/v1/quizzes/${created.id}`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .set("Content-Type", "application/json")
-      .send({ name: "Culture générale", question_ids: newIds });
-    expect(res.status).toBe(200);
-    expect(res.body.question_count).toBe(10);
-    // L'ordre est validé côté service/repository ; ici on valide la réponse HTTP
-    expect(res.body.last_updated_at).not.toBeNull();
-  });
-
-  // CA-28 : Content-Type incorrect sur PUT
-  it("CA-28: returns 415 for wrong Content-Type on PUT", async () => {
-    const created = (await createValidQuiz()).body;
-    const res = await request(server)
-      .put(`/api/v1/quizzes/${created.id}`)
-      .set("Authorization", `Bearer ${adminToken}`)
-      .set("Content-Type", "text/plain")
-      .send("hello");
-    expect(res.status).toBe(415);
-  });
-
-  // CA-38 étendu : PUT sans token
-  it("CA-38: PUT returns 401 without token", async () => {
-    const created = (await createValidQuiz()).body;
-    const res = await request(server)
-      .put(`/api/v1/quizzes/${created.id}`)
-      .set("Content-Type", "application/json")
-      .send({ name: "Test", question_ids: makeQ(10) });
-    expect(res.status).toBe(401);
-  });
-
-  // CA-39 étendu : PUT avec rôle buzzer
-  it("CA-39: PUT returns 403 for buzzer role", async () => {
-    const created = (await createValidQuiz()).body;
-    const res = await request(server)
-      .put(`/api/v1/quizzes/${created.id}`)
-      .set("Authorization", `Bearer ${buzzerToken}`)
-      .set("Content-Type", "application/json")
-      .send({ name: "Test", question_ids: makeQ(10) });
-    expect(res.status).toBe(403);
-  });
-
-  // CA-40 : Rate limiting sur la collection
-  it("CA-40: returns 429 when rate limit is exceeded", async () => {
-    // Créer un handler avec un rate limiter très bas (1 req max)
-    const tightRateLimiter = new RateLimiter(1, 60_000);
-    const authenticate = createAuthenticateMiddleware(JWT_SECRET);
-    const authorize = createAuthorizeMiddleware("admin");
-    const tightCollectionHandler = createQuizzesCollectionHandler(
-      db, config, authenticate, authorize, tightRateLimiter
-    );
-
-    const tightServer = createServer((req, res) => {
-      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-      if (url.pathname === "/api/v1/quizzes") {
-        tightCollectionHandler(req, res, url);
-      } else {
-        res.writeHead(404); res.end();
-      }
-    });
-    await new Promise((resolve) => tightServer.listen(0, resolve));
-
-    try {
-      // Première requête : passe
-      await request(tightServer)
-        .get("/api/v1/quizzes")
-        .set("Authorization", `Bearer ${adminToken}`);
-
-      // Deuxième requête : bloquée
-      const res = await request(tightServer)
-        .get("/api/v1/quizzes")
-        .set("Authorization", `Bearer ${adminToken}`);
-
-      expect(res.status).toBe(429);
-      expect(res.body.error).toBe("RATE_LIMIT_EXCEEDED");
-      expect(res.headers["retry-after"]).toBeDefined();
-    } finally {
-      await new Promise((resolve) => tightServer.close(resolve));
-    }
-  });
-
-  // CA-42 : Erreur serveur inattendue sur GET
-  it("CA-42: returns 500 on unexpected server error (GET)", async () => {
-    db.close();
-    const res = await request(server)
-      .get("/api/v1/quizzes")
-      .set("Authorization", `Bearer ${adminToken}`);
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe("INTERNAL_SERVER_ERROR");
-    db = openDatabase(":memory:");
-  });
-
-
-  // ─── Ajouts dans describe("DELETE /api/v1/quizzes/:id") ──────────────────────
-
-  // CA-39 étendu : DELETE avec rôle buzzer
-  it("CA-39: DELETE returns 403 for buzzer role", async () => {
-    const created = (await createValidQuiz()).body;
-    const res = await request(server)
-      .delete(`/api/v1/quizzes/${created.id}`)
-      .set("Authorization", `Bearer ${buzzerToken}`);
-    expect(res.status).toBe(403);
-  });
-
-  // CA-40 : Rate limiting sur la ressource
-  it("CA-40: returns 429 when rate limit is exceeded on resource", async () => {
-    const tightRateLimiter = new RateLimiter(1, 60_000);
-    const authenticate = createAuthenticateMiddleware(JWT_SECRET);
-    const authorize = createAuthorizeMiddleware("admin");
-    const tightResourceHandler = createQuizResourceHandler(
-      db, config, authenticate, authorize, tightRateLimiter
-    );
-
-    const tightServer = createServer((req, res) => {
-      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-      if (url.pathname.match(/^\/api\/v1\/quizzes\/[^/]+$/)) {
-        tightResourceHandler(req, res, url);
-      } else {
-        res.writeHead(404); res.end();
-      }
-    });
-    await new Promise((resolve) => tightServer.listen(0, resolve));
-
-    // Créer un quiz sur le serveur principal
-    const created = (await createValidQuiz()).body;
-
-    try {
-      // Première requête : passe
-      await request(tightServer)
-        .delete(`/api/v1/quizzes/${created.id}`)
-        .set("Authorization", `Bearer ${adminToken}`);
-
-      // Deuxième requête : bloquée
-      const res = await request(tightServer)
-        .delete(`/api/v1/quizzes/${created.id}`)
-        .set("Authorization", `Bearer ${adminToken}`);
-
-      expect(res.status).toBe(429);
-      expect(res.body.error).toBe("RATE_LIMIT_EXCEEDED");
-      expect(res.headers["retry-after"]).toBeDefined();
-    } finally {
-      await new Promise((resolve) => tightServer.close(resolve));
-    }
-  });
-
-  // CA-42 : Erreur serveur inattendue sur DELETE
-  it("CA-42: returns 500 on unexpected server error (DELETE)", async () => {
-    const created = (await createValidQuiz()).body;
-    db.close();
-    const res = await request(server)
-      .delete(`/api/v1/quizzes/${created.id}`)
-      .set("Authorization", `Bearer ${adminToken}`);
-    expect(res.status).toBe(500);
-    expect(res.body.error).toBe("INTERNAL_SERVER_ERROR");
-    db = openDatabase(":memory:");
-  });
 });
 
 // ─── GET /api/v1/questions ────────────────────────────────────────────────────
@@ -1010,8 +792,8 @@ describe("GET /api/v1/questions — time_limit and points filters", () => {
 
   describe("CA-36: DELETE /api/v1/questions/:id — garde quiz", () => {
     it("returns 409 QUESTION_IN_QUIZ when question belongs to a quiz", async () => {
-      // Créer une question
-      const qRes = await createMcqQuestion();
+      // Créer une question avec un titre unique (le beforeEach a déjà utilisé le titre par défaut)
+      const qRes = await createMcqQuestion({ title: "Question principale pour le test de garde quiz ?" });
       const questionId = qRes.body.id;
 
       // Créer 9 autres questions pour atteindre 10
@@ -1023,8 +805,6 @@ describe("GET /api/v1/questions — time_limit and points filters", () => {
 
       // Insérer un quiz qui utilise ces questions
       // (on insère directement en DB pour ne pas dépendre de quizRoute)
-      const { insertQuiz, insertQuizQuestions } = await import("../src/repositories/quizRepository.js");
-      const { v7: uuidv7 } = await import("uuid");
       const quizId = uuidv7();
       insertQuiz(db, { id: quizId, name: "Quiz de test garde", createdAt: new Date().toISOString() });
       insertQuizQuestions(db, quizId, [questionId, ...otherIds]);

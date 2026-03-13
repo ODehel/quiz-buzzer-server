@@ -23,9 +23,9 @@ function makeToken(role = "admin") {
   );
 }
 
-// Génère 10 UUIDs de questions existantes
+// Génère n UUIDs de questions existantes
 function makeQ(n) {
-  return Array.from({ length: n }, (_, i) => `qst-${String(i + 1).padStart(2, "0")}`);
+  return Array.from({ length: n }, (_, i) => `00000000-0000-7000-8000-${String(i + 1).padStart(12, "0")}`);
 }
 
 // ─── Setup ────────────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ beforeEach((done) => {
           QST_CORRECT_ANSWER, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CREATED_AT)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
-      `qst-${String(i).padStart(2, "0")}`,
+      `00000000-0000-7000-8000-${String(i).padStart(12, "0")}`,
       i % 2 === 0 ? "MCQ" : "SPEED",
       "thm-1",
       `Question numéro ${i} valide pour un quiz de test ?`,
@@ -121,8 +121,8 @@ describe("POST /api/v1/quizzes", () => {
   });
 
   it("CA-4: returns 409 for duplicate name", async () => {
-    await createValidQuiz("Culture générale");
-    const res = await createValidQuiz("CULTURE GÉNÉRALE");
+    await createValidQuiz("Sciences du monde");
+    const res = await createValidQuiz("SCIENCES DU MONDE");
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("CONFLICT");
   });
