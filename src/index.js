@@ -15,6 +15,10 @@ import {
 } from "./routes/questionRoute.js";
 import { startServer } from "./server.js";
 import { attachWebSocket } from "./websocket/wsServer.js";
+import {
+  createQuizzesCollectionHandler,
+  createQuizResourceHandler,
+} from "./routes/quizRoute.js";
 
 const config = loadEnv();
 const db = openDatabase();
@@ -42,6 +46,12 @@ const questionsBulkHandler = createQuestionsBulkHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const questionResourceHandler = createQuestionResourceHandler(
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const quizzesCollectionHandler = createQuizzesCollectionHandler(
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const quizResourceHandler = createQuizResourceHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 
@@ -85,6 +95,19 @@ function requestHandler(req, res) {
   const questionMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)$/);
   if (questionMatch) {
     questionResourceHandler(req, res, url);
+    return;
+  }
+
+  // Routes quiz — collection
+  if (url.pathname === "/api/v1/quizzes") {
+    quizzesCollectionHandler(req, res, url);
+    return;
+  }
+
+  // Routes quiz — ressource individuelle (/api/v1/quizzes/:id)
+  const quizMatch = url.pathname.match(/^\/api\/v1\/quizzes\/([^/]+)$/);
+  if (quizMatch) {
+    quizResourceHandler(req, res, url);
     return;
   }
 

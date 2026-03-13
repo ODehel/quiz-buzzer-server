@@ -1,0 +1,380 @@
+import { createServer } from "node:http";
+import { openDatabase } from "../src/database/database.js";
+import { createAuthenticateMiddleware } from "../src/middlewares/authenticate.js";
+import { createAuthorizeMiddleware } from "../src/middlewares/authorize.js";
+import { RateLimiter } from "../src/middlewares/rateLimiter.js";
+import {
+  createQuizzesCollectionHandler,
+  createQuizResourceHandler,
+} from "../src/routes/quizRoute.js";
+import jwt from "jsonwebtoken";
+import request from "supertest";
+
+const JWT_SECRET = "a".repeat(32);
+const config = { jwtSecret: JWT_SECRET, jwtExpiration: 3600 };
+
+let db, server, adminToken, buzzerToken;
+
+function makeToken(role = "admin") {
+  return jwt.sign(
+    { sub: "018e4f5a-8c3b-7d2e-9f1a-000000000001", role },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: 3600 }
+  );
+}
+
+// Génère 10 UUIDs de questions existantes
+function makeQ(n) {
+  return Array.from({ length: n }, (_, i) => `qst-${String(i + 1).padStart(2, "0")}`);
+}
+
+// ─── Setup ────────────────────────────────────────────────────────────────────
+
+beforeEach((done) => {
+  db = openDatabase(":memory:");
+
+  // Thème
+  db.prepare(
+    `INSERT INTO T_THEME_THM (THM_ID, THM_NAME, THM_CREATED_AT) VALUES (?, ?, ?)`
+  ).run("thm-1", "Science", "2026-03-13T10:00:00.000Z");
+
+  // 15 questions
+  for (let i = 1; i <= 15; i++) {
+    db.prepare(
+      `INSERT INTO T_QUESTION_QST
+         (QST_ID, QST_TYPE, QST_THEME_ID, QST_TITLE,
+          QST_CORRECT_ANSWER, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      `qst-${String(i).padStart(2, "0")}`,
+      i % 2 === 0 ? "MCQ" : "SPEED",
+      "thm-1",
+      `Question numéro ${i} valide pour un quiz de test ?`,
+      "Réponse", (i % 5) + 1, 30, 5, "2026-03-13T10:00:00.000Z"
+    );
+  }
+
+  const authenticate = createAuthenticateMiddleware(JWT_SECRET);
+  const authorize = createAuthorizeMiddleware("admin");
+  const rateLimiter = new RateLimiter(100, 60_000);
+
+  const collectionHandler = createQuizzesCollectionHandler(
+    db, config, authenticate, authorize, rateLimiter
+  );
+  const resourceHandler = createQuizResourceHandler(
+    db, config, authenticate, authorize, rateLimiter
+  );
+
+  adminToken = makeToken("admin");
+  buzzerToken = makeToken("buzzer");
+
+  server = createServer((req, res) => {
+    const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    if (url.pathname === "/api/v1/quizzes") {
+      collectionHandler(req, res, url);
+    } else if (url.pathname.match(/^\/api\/v1\/quizzes\/[^/]+$/)) {
+      resourceHandler(req, res, url);
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  server.listen(0, done);
+});
+
+afterEach((done) => {
+  db.close();
+  server.close(done);
+});
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function createValidQuiz(name = "Culture générale", n = 10) {
+  return request(server)
+    .post("/api/v1/quizzes")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .set("Content-Type", "application/json")
+    .send({ name, question_ids: makeQ(n) });
+}
+
+// ─── POST /api/v1/quizzes ─────────────────────────────────────────────────────
+
+describe("POST /api/v1/quizzes", () => {
+  it("CA-1: creates a quiz and returns 201", async () => {
+    const res = await createValidQuiz();
+    expect(res.status).toBe(201);
+    expect(res.body.name).toBe("Culture générale");
+    expect(res.body.question_count).toBe(10);
+    expect(res.body.last_updated_at).toBeNull();
+    expect(res.body.id).toBeDefined();
+    expect(res.body.created_at).toBeDefined();
+  });
+
+  it("CA-3: returns 400 for invalid name", async () => {
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "culture générale", question_ids: makeQ(10) });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("VALIDATION_ERROR");
+  });
+
+  it("CA-4: returns 409 for duplicate name", async () => {
+    await createValidQuiz("Culture générale");
+    const res = await createValidQuiz("CULTURE GÉNÉRALE");
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("CONFLICT");
+  });
+
+  it("CA-5: returns 400 for less than 10 questions", async () => {
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: makeQ(3) });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("VALIDATION_ERROR");
+  });
+
+  it("CA-6: returns 400 for duplicate question IDs", async () => {
+    const ids = makeQ(10);
+    ids[1] = ids[0]; // doublon
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: ids });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("VALIDATION_ERROR");
+  });
+
+  it("CA-7: returns 400 for invalid UUID in question_ids", async () => {
+    const ids = makeQ(10);
+    ids[0] = "not-a-uuid";
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: ids });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_UUID");
+  });
+
+  it("CA-8: returns 404 for non-existent question", async () => {
+    const ids = ["018e4f5a-0000-0000-0000-000000000000", ...makeQ(9).slice(0)];
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: ids });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("QUESTION_NOT_FOUND");
+  });
+
+  it("CA-12: returns 400 for unknown fields", async () => {
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: makeQ(10), extra: "field" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("UNKNOWN_FIELDS");
+  });
+
+  it("CA-13: returns 415 for wrong Content-Type", async () => {
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "text/plain")
+      .send("hello");
+    expect(res.status).toBe(415);
+  });
+
+  it("CA-38: returns 401 without token", async () => {
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: makeQ(10) });
+    expect(res.status).toBe(401);
+  });
+
+  it("CA-39: returns 403 for buzzer role", async () => {
+    const res = await request(server)
+      .post("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${buzzerToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: makeQ(10) });
+    expect(res.status).toBe(403);
+  });
+
+  it("CA-41: returns 405 for PATCH on collection", async () => {
+    const res = await request(server)
+      .patch("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(405);
+    expect(res.headers["allow"]).toContain("GET");
+    expect(res.headers["allow"]).toContain("POST");
+  });
+});
+
+// ─── GET /api/v1/quizzes ──────────────────────────────────────────────────────
+
+describe("GET /api/v1/quizzes", () => {
+  it("CA-15: returns 200 with list", async () => {
+    await createValidQuiz();
+    const res = await request(server)
+      .get("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+    expect(res.body).toHaveLength(1);
+  });
+
+  it("CA-16: returns 200 with empty array when no quizzes", async () => {
+    const res = await request(server)
+      .get("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("CA-18: filters by ?name=", async () => {
+    await createValidQuiz("Culture générale", 10);
+    await createValidQuiz("Sport et loisirs", 12);
+    const res = await request(server)
+      .get("/api/v1/quizzes?name=culture")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].name).toBe("Culture générale");
+  });
+
+  it("CA-19: includes question_summary in each quiz", async () => {
+    await createValidQuiz();
+    const res = await request(server)
+      .get("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.body[0].question_summary).toBeDefined();
+    expect(res.body[0].question_summary.total).toBe(10);
+  });
+});
+
+// ─── PUT /api/v1/quizzes/:id ─────────────────────────────────────────────────
+
+describe("PUT /api/v1/quizzes/:id", () => {
+  it("CA-20: updates quiz and returns 200", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .put(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Culture générale modifié", question_ids: makeQ(12) });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe("Culture générale modifié");
+    expect(res.body.question_count).toBe(12);
+    expect(res.body.last_updated_at).not.toBeNull();
+  });
+
+  it("CA-24: returns 200 without modifying last_updated_at when identical", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .put(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Culture générale", question_ids: makeQ(10) });
+    expect(res.status).toBe(200);
+    expect(res.body.last_updated_at).toBeNull();
+  });
+
+  it("CA-25: returns 400 ID_MISMATCH when body id differs from URL", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .put(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({
+        id: "018e4f5a-0000-0000-0000-000000000000",
+        name: "Test",
+        question_ids: makeQ(10),
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("ID_MISMATCH");
+  });
+
+  it("CA-26: returns 404 for unknown quiz ID", async () => {
+    const res = await request(server)
+      .put("/api/v1/quizzes/018e4f5a-8c3b-7d2e-9f1a-000000000099")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: makeQ(10) });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("NOT_FOUND");
+  });
+
+  it("CA-27: returns 400 for malformed quiz ID", async () => {
+    const res = await request(server)
+      .put("/api/v1/quizzes/not-a-uuid")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ name: "Mon quiz", question_ids: makeQ(10) });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_UUID");
+  });
+
+  it("CA-41: returns 405 for GET on resource", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .get(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(405);
+    expect(res.headers["allow"]).toContain("PUT");
+    expect(res.headers["allow"]).toContain("DELETE");
+  });
+});
+
+// ─── DELETE /api/v1/quizzes/:id ───────────────────────────────────────────────
+
+describe("DELETE /api/v1/quizzes/:id", () => {
+  it("CA-29: deletes quiz and returns 204", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .delete(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(204);
+    expect(res.body).toEqual({});
+  });
+
+  it("CA-33: returns 404 for unknown quiz ID", async () => {
+    const res = await request(server)
+      .delete("/api/v1/quizzes/018e4f5a-8c3b-7d2e-9f1a-000000000099")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("NOT_FOUND");
+  });
+
+  it("CA-34: returns 400 for malformed quiz ID", async () => {
+    const res = await request(server)
+      .delete("/api/v1/quizzes/not-a-uuid")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_UUID");
+  });
+
+  it("CA-35: ignores a body silently and still returns 204", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .delete(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ unexpected: "body" });
+    expect(res.status).toBe(204);
+  });
+
+  it("CA-38: returns 401 without token", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .delete(`/api/v1/quizzes/${created.id}`);
+    expect(res.status).toBe(401);
+  });
+});
