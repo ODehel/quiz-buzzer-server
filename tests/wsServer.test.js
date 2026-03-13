@@ -755,6 +755,7 @@ describe("attachWebSocket — buzzer slot freed on disconnect (CA-14)", () => {
     expect(msg.type).toBe("auth_success");
 
     newBuzzer.terminate();
+    // clients[0] was already closed above; terminate the remaining clients
     for (let i = 1; i < clients.length; i++) clients[i].terminate();
   });
 });
