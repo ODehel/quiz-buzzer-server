@@ -14,6 +14,7 @@ import {
   parsePagination,
   parseFilters,
 } from "../services/questionService.js";
+import { countQuizzesByQuestion } from "../repositories/quizRepository.js";
 
 /**
  * Gestion centralisée des erreurs pour les handlers de questions.
@@ -155,6 +156,16 @@ export function createQuestionResourceHandler(db, config, authenticate, authoriz
         const question = patchQuestionById(db, id, body);
         sendJson(res, 200, question);
         return;
+      }
+
+      // CA-36 : Garde — la question ne peut pas être supprimée si elle appartient à un quiz
+      const quizCount = countQuizzesByQuestion(db, id);
+      if (quizCount > 0) {
+        throw new AppError(
+          409,
+          "QUESTION_IN_QUIZ",
+          "Cannot delete this question: it belongs to one or more quizzes."
+        );
       }
 
       // DELETE (CA-74 à CA-77)

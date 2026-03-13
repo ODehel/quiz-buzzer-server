@@ -11,6 +11,8 @@ import {
   createThemesCollectionHandler,
   createThemeResourceHandler,
 } from "../src/routes/themeRoute.js";
+import { insertQuiz, insertQuizQuestions } from "../src/repositories/quizRepository.js";
+import { v7 as uuidv7 } from "uuid";
 import jwt from "jsonwebtoken";
 import request from "supertest";
 
@@ -245,6 +247,7 @@ describe("POST /api/v1/questions", () => {
     expect(res.status).toBe(405);
     expect(res.headers.allow).toBe("GET, POST");
   });
+
 });
 
 // ─── GET /api/v1/questions ────────────────────────────────────────────────────
@@ -785,5 +788,48 @@ describe("GET /api/v1/questions — time_limit and points filters", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0].points).toBe(5);
+  });
+
+  describe("CA-36: DELETE /api/v1/questions/:id — garde quiz", () => {
+    it("returns 409 QUESTION_IN_QUIZ when question belongs to a quiz", async () => {
+      // Créer une question avec un titre unique (le beforeEach a déjà utilisé le titre par défaut)
+      const qRes = await createMcqQuestion({ title: "Question principale pour le test de garde quiz ?" });
+      const questionId = qRes.body.id;
+
+      // Créer 9 autres questions pour atteindre 10
+      const otherIds = [];
+      for (let i = 0; i < 9; i++) {
+        const r = await createMcqQuestion({ title: `Autre question numéro ${i + 1} pour le quiz ?` });
+        otherIds.push(r.body.id);
+      }
+
+      // Insérer un quiz qui utilise ces questions
+      // (on insère directement en DB pour ne pas dépendre de quizRoute)
+      const quizId = uuidv7();
+      insertQuiz(db, { id: quizId, name: "Quiz de test garde", createdAt: new Date().toISOString() });
+      insertQuizQuestions(db, quizId, [questionId, ...otherIds]);
+
+      // Tentative de suppression → 409
+      const res = await request(server)
+        .delete(`/api/v1/questions/${questionId}`)
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("QUESTION_IN_QUIZ");
+      expect(res.body.message).toBe(
+        "Cannot delete this question: it belongs to one or more quizzes."
+      );
+    });
+
+    it("CA-37: returns 204 when question belongs to no quiz", async () => {
+      const qRes = await createMcqQuestion({ title: "Question libre sans quiz associé ?" });
+      const questionId = qRes.body.id;
+
+      const res = await request(server)
+        .delete(`/api/v1/questions/${questionId}`)
+        .set("Authorization", `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(204);
+    });
   });
 });
