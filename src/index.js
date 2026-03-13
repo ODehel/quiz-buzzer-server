@@ -24,7 +24,7 @@ const authenticate = createAuthenticateMiddleware(config.jwtSecret);
 const authorize = createAuthorizeMiddleware("admin");
 
 // Rate limiters
-const tokenRateLimiter = new RateLimiter(5, 60_000);
+const tokenRateLimiter = new RateLimiter(20, 60_000);
 const apiRateLimiter = new RateLimiter(100, 60_000); // CA-34 / CA-82 : 100 req/min
 
 // Handlers
