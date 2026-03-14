@@ -9,7 +9,7 @@ import { logInfo, logWarn } from "../utils/logger.js";
  * Empêche les timing attacks : même si le username n'existe pas,
  * on exécute quand même un bcrypt.compare().
  */
-const DUMMY_HASH = "$2b$10$K4G1PqR5vZ8mN3jX7wL2xO9yT6uI0sA1dF3gH5kJ7lM2nP4qR6tW";
+const DUMMY_HASH = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8ziZCfFpOPOdHJGmjkm";
 
 /**
  * Authentifie un utilisateur et retourne un token JWT.

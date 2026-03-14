@@ -130,6 +130,18 @@ describe("POST /api/v1/token — integration", () => {
     expect(res.body.error).toBe("VALIDATION_ERROR");
   });
 
+  // INVALID_BODY : body JSON valide mais pas un objet
+  it("should return 400 INVALID_BODY when body is a JSON array", async () => {
+    const res = await request(server)
+      .post("/api/v1/token")
+      .set("Content-Type", "application/json")
+      .send(JSON.stringify([1, 2, 3]));
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_BODY");
+    expect(res.body.message).toBe("Request body must be a JSON object.");
+  });
+
   // CA-11
   it("should return 400 INVALID_JSON for malformed body", async () => {
     const res = await request(server)
