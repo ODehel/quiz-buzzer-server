@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
-import { runSeed, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "../src/seed.js";
-import { countUsers } from "../src/repositories/userRepository.js";
+import { runSeed, MIN_PASSWORD_LENGTH, MAX_PASSWORD_LENGTH } from "../../seed.js";
+import { countUsers } from "../../repositories/userRepository.js";
 
 function createTestDb() {
   const db = new Database(":memory:");
@@ -20,17 +20,17 @@ function createTestDb() {
 /** Génère un objet env valide avec tous les mots de passe requis. */
 function validEnv() {
   return {
-    ADMIN_PASSWORD: "AdminPassword1!",
-    BUZZER_01_PASSWORD: "BuzzerPass001!",
-    BUZZER_02_PASSWORD: "BuzzerPass002!",
-    BUZZER_03_PASSWORD: "BuzzerPass003!",
-    BUZZER_04_PASSWORD: "BuzzerPass004!",
-    BUZZER_05_PASSWORD: "BuzzerPass005!",
-    BUZZER_06_PASSWORD: "BuzzerPass006!",
-    BUZZER_07_PASSWORD: "BuzzerPass007!",
-    BUZZER_08_PASSWORD: "BuzzerPass008!",
-    BUZZER_09_PASSWORD: "BuzzerPass009!",
-    BUZZER_10_PASSWORD: "BuzzerPass010!",
+    SEED_PASSWORD_ADMIN: "AdminPassword1!",
+    SEED_PASSWORD_BUZZER_01: "BuzzerPass001!",
+    SEED_PASSWORD_BUZZER_02: "BuzzerPass002!",
+    SEED_PASSWORD_BUZZER_03: "BuzzerPass003!",
+    SEED_PASSWORD_BUZZER_04: "BuzzerPass004!",
+    SEED_PASSWORD_BUZZER_05: "BuzzerPass005!",
+    SEED_PASSWORD_BUZZER_06: "BuzzerPass006!",
+    SEED_PASSWORD_BUZZER_07: "BuzzerPass007!",
+    SEED_PASSWORD_BUZZER_08: "BuzzerPass008!",
+    SEED_PASSWORD_BUZZER_09: "BuzzerPass009!",
+    SEED_PASSWORD_BUZZER_10: "BuzzerPass010!",
   };
 }
 
@@ -101,7 +101,7 @@ describe("runSeed", () => {
   // CA-20 : Mot de passe trop court
   it("should throw if a password is shorter than 12 characters", async () => {
     const env = validEnv();
-    env.ADMIN_PASSWORD = "short";
+    env.SEED_PASSWORD_ADMIN = "short";
 
     await expect(
       runSeed({ db, env, generateId: fakeId, hashPassword: fakeHash })
@@ -112,7 +112,7 @@ describe("runSeed", () => {
   // CA-20 : Mot de passe trop long (> 72 chars)
   it("should throw if a password exceeds 72 characters", async () => {
     const env = validEnv();
-    env.ADMIN_PASSWORD = "a".repeat(73);
+    env.SEED_PASSWORD_ADMIN = "a".repeat(73);
 
     await expect(
       runSeed({ db, env, generateId: fakeId, hashPassword: fakeHash })
@@ -123,11 +123,11 @@ describe("runSeed", () => {
   // Variable d'environnement manquante
   it("should throw if a password environment variable is missing", async () => {
     const env = validEnv();
-    delete env.BUZZER_05_PASSWORD;
+    delete env.SEED_PASSWORD_BUZZER_05;
 
     await expect(
       runSeed({ db, env, generateId: fakeId, hashPassword: fakeHash })
-    ).rejects.toThrow("BUZZER_05_PASSWORD is not set");
+    ).rejects.toThrow("SEED_PASSWORD_BUZZER_05 is not set");
     expect(countUsers(db)).toBe(0);
   });
 

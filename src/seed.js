@@ -5,17 +5,17 @@ import { countUsers, insertUser } from "./repositories/userRepository.js";
 import { v7 as uuidv7 } from "uuid";
 
 const USERS = [
-  { username: "admin", role: "admin", envVar: "ADMIN_PASSWORD" },
-  { username: "quiz_buzzer_01", role: "buzzer", envVar: "BUZZER_01_PASSWORD" },
-  { username: "quiz_buzzer_02", role: "buzzer", envVar: "BUZZER_02_PASSWORD" },
-  { username: "quiz_buzzer_03", role: "buzzer", envVar: "BUZZER_03_PASSWORD" },
-  { username: "quiz_buzzer_04", role: "buzzer", envVar: "BUZZER_04_PASSWORD" },
-  { username: "quiz_buzzer_05", role: "buzzer", envVar: "BUZZER_05_PASSWORD" },
-  { username: "quiz_buzzer_06", role: "buzzer", envVar: "BUZZER_06_PASSWORD" },
-  { username: "quiz_buzzer_07", role: "buzzer", envVar: "BUZZER_07_PASSWORD" },
-  { username: "quiz_buzzer_08", role: "buzzer", envVar: "BUZZER_08_PASSWORD" },
-  { username: "quiz_buzzer_09", role: "buzzer", envVar: "BUZZER_09_PASSWORD" },
-  { username: "quiz_buzzer_10", role: "buzzer", envVar: "BUZZER_10_PASSWORD" },
+  { username: "admin", role: "admin", envVar: "SEED_PASSWORD_ADMIN" },
+  { username: "quiz_buzzer_01", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_01" },
+  { username: "quiz_buzzer_02", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_02" },
+  { username: "quiz_buzzer_03", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_03" },
+  { username: "quiz_buzzer_04", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_04" },
+  { username: "quiz_buzzer_05", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_05" },
+  { username: "quiz_buzzer_06", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_06" },
+  { username: "quiz_buzzer_07", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_07" },
+  { username: "quiz_buzzer_08", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_08" },
+  { username: "quiz_buzzer_09", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_09" },
+  { username: "quiz_buzzer_10", role: "buzzer", envVar: "SEED_PASSWORD_BUZZER_10" },
 ];
 
 export const MIN_PASSWORD_LENGTH = 12;
@@ -35,7 +35,7 @@ export async function runSeed({
   db,
   env,
   generateId = uuidv7,
-  hashPassword = (pwd) => bcrypt.hash(pwd, 10),
+  hashPassword = (pwd) => bcrypt.hash(pwd, Number(process.env.BCRYPT_COST) || 12),
 }) {
   // 1. Idempotent (CA-19)
   if (countUsers(db) > 0) {
