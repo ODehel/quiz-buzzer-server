@@ -19,6 +19,10 @@ import {
   createQuizzesCollectionHandler,
   createQuizResourceHandler,
 } from "./routes/quizRoute.js";
+import {
+  createGamesCollectionHandler,
+  createGameResourceHandler,
+} from "./routes/gameRoute.js";
 
 const config = loadEnv();
 const db = openDatabase();
@@ -52,6 +56,12 @@ const quizzesCollectionHandler = createQuizzesCollectionHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const quizResourceHandler = createQuizResourceHandler(
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const gamesCollectionHandler = createGamesCollectionHandler(
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const gameResourceHandler = createGameResourceHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 
@@ -108,6 +118,19 @@ function requestHandler(req, res) {
   const quizMatch = url.pathname.match(/^\/api\/v1\/quizzes\/([^/]+)$/);
   if (quizMatch) {
     quizResourceHandler(req, res, url);
+    return;
+  }
+
+  // Routes parties — collection
+  if (url.pathname === "/api/v1/games") {
+    gamesCollectionHandler(req, res);
+    return;
+  }
+
+  // Routes parties — ressource individuelle (/api/v1/games/:id)
+  const gameMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)$/);
+  if (gameMatch) {
+    gameResourceHandler(req, res, url);
     return;
   }
 
