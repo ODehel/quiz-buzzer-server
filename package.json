@@ -7,6 +7,7 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "seed": "node src/seed.js",
+    "generate-env": "node scripts/generate-env.js",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --coverage"
   },
   "engines": {
