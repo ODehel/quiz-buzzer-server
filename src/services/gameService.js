@@ -1,0 +1,319 @@
+import { v7 as uuidv7 } from "uuid";
+import { AppError } from "../errors/AppError.js";
+import {
+  insertGame,
+  insertParticipants,
+  findGameById,
+  findParticipantsByGameId,
+  findAllGames,
+  countActiveGames,
+  updateGameStatus,
+  deleteParticipantsByGameId,
+  deleteGameById,
+  findParticipantByOrder,
+  updateParticipantName,
+} from "../repositories/gameRepository.js";
+import { findQuizById } from "../repositories/quizRepository.js";
+
+/** Regex de validation UUID */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Transitions de statut autorisées via PUT/PATCH.
+ * Les transitions vers IN_ERROR sont réservées au serveur.
+ */
+const ALLOWED_TRANSITIONS = {
+  PENDING: new Set(["OPEN"]),
+  OPEN: new Set(["COMPLETED"]),
+  COMPLETED: new Set(),
+  IN_ERROR: new Set(),
+};
+
+/**
+ * Valide qu'un ID est un UUID valide.
+ *
+ * @param {string} id
+ * @throws {AppError} 400 INVALID_UUID
+ */
+export function validateUuid(id) {
+  if (!UUID_REGEX.test(id)) {
+    throw new AppError(400, "INVALID_UUID", "The provided ID is not a valid UUID.");
+  }
+}
+
+/**
+ * Valide un tableau de noms de participants (CA-8, CA-9).
+ *
+ * @param {unknown} participants
+ * @throws {AppError} 400 VALIDATION_ERROR
+ */
+function validateParticipantNames(participants) {
+  if (!Array.isArray(participants) || participants.length < 1 || participants.length > 10) {
+    throw new AppError(
+      400,
+      "VALIDATION_ERROR",
+      "participants must be an array of 1 to 10 elements."
+    );
+  }
+  for (const name of participants) {
+    if (typeof name !== "string" || name.trim() === "" || name.length > 50) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        "Each participant name must be a non-empty string of at most 50 characters."
+      );
+    }
+  }
+}
+
+/**
+ * Valide une transition de statut (CA-25 à CA-29).
+ *
+ * @param {string} currentStatus
+ * @param {string} newStatus
+ * @throws {AppError} 422 INVALID_TRANSITION
+ */
+function validateStatusTransition(currentStatus, newStatus) {
+  const allowed = ALLOWED_TRANSITIONS[currentStatus];
+  if (!allowed || !allowed.has(newStatus)) {
+    throw new AppError(
+      422,
+      "INVALID_TRANSITION",
+      `Cannot transition from ${currentStatus} to ${newStatus}.`
+    );
+  }
+}
+
+/**
+ * Mappe une ligne DB et ses participants vers le format JSON API.
+ *
+ * @param {{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT }} row
+ * @param {Array<{ GPA_ORDER: number, GPA_NAME: string }>} participants
+ * @returns {Object}
+ */
+function toApiFormat(row, participants) {
+  return {
+    id: row.GAM_ID,
+    quiz_id: row.GAM_QUIZ_ID,
+    status: row.GAM_STATUS,
+    created_at: row.GAM_CREATED_AT,
+    participants: participants.map((p) => ({ order: p.GPA_ORDER, name: p.GPA_NAME })),
+  };
+}
+
+/**
+ * Crée une nouvelle partie (CA-1 à CA-14).
+ * Retourne undefined — la réponse HTTP est 201 sans body.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {unknown} quizId
+ * @param {unknown} participants
+ */
+export function createGame(db, quizId, participants) {
+  // CA-5 : quiz_id doit être un UUID valide
+  validateUuid(quizId);
+  // CA-8, CA-9 : validation des participants
+  validateParticipantNames(participants);
+
+  // CA-7 : unicité de la partie active
+  if (countActiveGames(db) > 0) {
+    throw new AppError(
+      409,
+      "ACTIVE_GAME_EXISTS",
+      "A game is already active. Delete it before creating a new one."
+    );
+  }
+
+  // CA-6 : quiz existant
+  if (!findQuizById(db, quizId)) {
+    throw new AppError(404, "QUIZ_NOT_FOUND", "The requested quiz was not found.");
+  }
+
+  const id = uuidv7();
+  const now = new Date().toISOString();
+
+  // CA-10 : insertion atomique partie + participants
+  db.transaction(() => {
+    insertGame(db, { id, quizId, createdAt: now });
+    insertParticipants(db, id, participants.map((n) => n.trim()));
+  })();
+}
+
+/**
+ * Liste toutes les parties, triées par date de création décroissante (CA-15 à CA-18).
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @returns {Array}
+ */
+export function listGames(db) {
+  const games = findAllGames(db);
+  const participantsStmt = db.prepare(
+    `SELECT GPA_ORDER, GPA_NAME FROM T_GAME_PARTICIPANT_GPA
+     WHERE GPA_GAME_ID = ? ORDER BY GPA_ORDER`
+  );
+  return games.map((row) => toApiFormat(row, participantsStmt.all(row.GAM_ID)));
+}
+
+/**
+ * Retourne une partie par son ID (CA-19 à CA-21).
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ * @returns {Object}
+ */
+export function getGameById(db, id) {
+  validateUuid(id);
+  const row = findGameById(db, id);
+  if (!row) {
+    throw new AppError(404, "NOT_FOUND", "The requested game was not found.");
+  }
+  return toApiFormat(row, findParticipantsByGameId(db, id));
+}
+
+/**
+ * Modifie entièrement une partie (CA-22 à CA-35).
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ * @param {{ status?: string, participants?: string[], quizId?: string }} updates
+ * @returns {Object} Partie mise à jour au format API
+ */
+export function updateGame(db, id, { status, participants, quizId: bodyQuizId }) {
+  // CA-34 : UUID valide dans l'URL
+  validateUuid(id);
+
+  // CA-33 : partie existante
+  const existing = findGameById(db, id);
+  if (!existing) {
+    throw new AppError(404, "NOT_FOUND", "The requested game was not found.");
+  }
+
+  // CA-24 : quiz_id est immuable
+  if (bodyQuizId !== undefined && bodyQuizId !== existing.GAM_QUIZ_ID) {
+    throw new AppError(400, "IMMUTABLE_FIELD", "quiz_id cannot be changed after creation.");
+  }
+
+  // CA-25 à CA-29 : transition de statut
+  if (status !== undefined) {
+    validateStatusTransition(existing.GAM_STATUS, status);
+  }
+
+  // CA-31 : validation des participants (mêmes règles que la création)
+  if (participants !== undefined) {
+    validateParticipantNames(participants);
+  }
+
+  // Mise à jour atomique
+  db.transaction(() => {
+    if (status !== undefined) {
+      updateGameStatus(db, id, status);
+    }
+    if (participants !== undefined) {
+      deleteParticipantsByGameId(db, id);
+      insertParticipants(db, id, participants.map((n) => n.trim()));
+    }
+  })();
+
+  return toApiFormat(findGameById(db, id), findParticipantsByGameId(db, id));
+}
+
+/**
+ * Modifie partiellement une partie (CA-36 à CA-46).
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ * @param {{ status?: string, participants?: Array<{order: number, name: string}>, quizId?: string }} updates
+ * @returns {Object} Partie mise à jour au format API
+ */
+export function patchGame(db, id, { status, participants, quizId: bodyQuizId }) {
+  // CA-45 : UUID valide dans l'URL
+  validateUuid(id);
+
+  // CA-44 : partie existante
+  const existing = findGameById(db, id);
+  if (!existing) {
+    throw new AppError(404, "NOT_FOUND", "The requested game was not found.");
+  }
+
+  // CA-41 : quiz_id est immuable
+  if (bodyQuizId !== undefined && bodyQuizId !== existing.GAM_QUIZ_ID) {
+    throw new AppError(400, "IMMUTABLE_FIELD", "quiz_id cannot be changed after creation.");
+  }
+
+  // CA-42 : transitions de statut
+  if (status !== undefined) {
+    validateStatusTransition(existing.GAM_STATUS, status);
+  }
+
+  // CA-37 à CA-40 : validation des patches de participants
+  if (participants !== undefined) {
+    if (!Array.isArray(participants)) {
+      throw new AppError(400, "VALIDATION_ERROR", "participants must be an array.");
+    }
+    for (const patch of participants) {
+      // CA-39 : order doit être un entier entre 1 et 10
+      if (
+        typeof patch !== "object" ||
+        patch === null ||
+        !Number.isInteger(patch.order) ||
+        patch.order < 1 ||
+        patch.order > 10
+      ) {
+        throw new AppError(
+          400,
+          "VALIDATION_ERROR",
+          "Each participant must have an integer order between 1 and 10."
+        );
+      }
+      // CA-40 : nom valide
+      if (typeof patch.name !== "string" || patch.name.trim() === "" || patch.name.length > 50) {
+        throw new AppError(
+          400,
+          "VALIDATION_ERROR",
+          "Each participant name must be a non-empty string of at most 50 characters."
+        );
+      }
+      // CA-38 : order doit référencer un participant existant
+      if (!findParticipantByOrder(db, id, patch.order)) {
+        throw new AppError(
+          404,
+          "PARTICIPANT_NOT_FOUND",
+          `No participant found at order ${patch.order} for this game.`
+        );
+      }
+    }
+  }
+
+  // Mise à jour atomique
+  db.transaction(() => {
+    if (status !== undefined) {
+      updateGameStatus(db, id, status);
+    }
+    if (participants !== undefined) {
+      for (const patch of participants) {
+        updateParticipantName(db, id, patch.order, patch.name.trim());
+      }
+    }
+  })();
+
+  return toApiFormat(findGameById(db, id), findParticipantsByGameId(db, id));
+}
+
+/**
+ * Supprime une partie (CA-47 à CA-51).
+ * La suppression en cascade est gérée par la contrainte FK ON DELETE CASCADE.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ */
+export function deleteGame(db, id) {
+  // CA-50 : UUID valide
+  validateUuid(id);
+
+  // CA-49 : partie existante
+  if (!findGameById(db, id)) {
+    throw new AppError(404, "NOT_FOUND", "The requested game was not found.");
+  }
+
+  deleteGameById(db, id);
+}
