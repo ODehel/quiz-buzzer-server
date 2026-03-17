@@ -1,3 +1,5 @@
+import path from "node:path";
+import os from "node:os";
 import { openDatabase } from "../src/database/database.js";
 
 describe("openDatabase", () => {
@@ -53,18 +55,21 @@ describe("openDatabase", () => {
     }
   });
   it("should use default path when no argument is provided", async () => {
-    // Appel sans argument → crée quiz-buzzer.db sur le filesystem
-    const db = openDatabase();
+    const originalPath = process.env.DATABASE_PATH;
+    process.env.DATABASE_PATH = path.resolve(os.tmpdir(), `quiz-buzzer-test-${Date.now()}.db`);
 
+    const db = openDatabase();
     try {
       expect(db.open).toBe(true);
     } finally {
       db.close();
-      // Nettoyage du fichier créé (y compris fichiers WAL/SHM annexes)
       const fs = await import("node:fs");
+      const testPath = process.env.DATABASE_PATH;
       for (const suffix of ["", "-wal", "-shm"]) {
-        try { fs.unlinkSync(`quiz-buzzer.db${suffix}`); } catch { /* ignore */ }
+        try { fs.unlinkSync(`${testPath}${suffix}`); } catch { /* ignore */ }
       }
+      if (originalPath === undefined) delete process.env.DATABASE_PATH;
+      else process.env.DATABASE_PATH = originalPath;
     }
   });
 
