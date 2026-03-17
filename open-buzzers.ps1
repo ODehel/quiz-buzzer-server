@@ -43,7 +43,7 @@ function Read-EnvFile {
 function Open-WsWindow {
     param (
         [string]$Username,
-        [string]$Password,
+        [SecureString]$Password,
         [string]$ApiUrl,
         [string]$WsUrl,
         [string]$WindowColor = "DarkBlue"
@@ -52,11 +52,12 @@ function Open-WsWindow {
     Write-Host "  Recuperation du token pour $Username..." -NoNewline
 
     try {
+            $plainPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password))
         $response = Invoke-RestMethod `
             -Uri $ApiUrl `
             -Method POST `
             -ContentType "application/json" `
-            -Body "{`"username`":`"$Username`",`"password`":`"$Password`"}" `
+            -Body "{`"username`":`"$Username`",`"password`":`"$plainPassword`"}" `
             -ErrorAction Stop
         $token = $response.token
     }
@@ -153,7 +154,7 @@ Write-Host ""
 for ($i = 1; $i -le $NombreDeBuzzers; $i++) {
     $num      = $i.ToString("D2")
     $username = "quiz_buzzer_$num"
-    $envKey   = "BUZZER_${num}_PASSWORD"
+    $envKey   = "SEED_PASSWORD_BUZZER_${num}"
     $password = $env[$envKey]
 
     if ([string]::IsNullOrEmpty($password)) {
@@ -161,7 +162,9 @@ for ($i = 1; $i -le $NombreDeBuzzers; $i++) {
         continue
     }
 
-    $ok = Open-WsWindow -Username $username -Password $password -ApiUrl $apiUrl -WsUrl $wsUrl -WindowColor "Cyan"
+    $securePassword = ConvertTo-SecureString $password -AsPlainText -Force
+
+    $ok = Open-WsWindow -Username $username -Password $securePassword -ApiUrl $apiUrl -WsUrl $wsUrl -WindowColor "Cyan"
     if ($ok) { $opened++ }
     Start-Sleep -Milliseconds 300
 }
@@ -174,12 +177,13 @@ Write-Host ""
 Write-Host "  -- Admin (application Angular) --" -ForegroundColor DarkGray
 Write-Host ""
 
-$adminPassword = $env["ADMIN_PASSWORD"]
+$adminPassword = $env["SEED_PASSWORD_ADMIN"]
 
 if ([string]::IsNullOrEmpty($adminPassword)) {
-    Write-Warning "Mot de passe introuvable pour admin - ADMIN_PASSWORD absent du .env - fenetre ignoree."
+    Write-Warning "Mot de passe introuvable pour admin - SEED_PASSWORD_ADMIN absent du .env - fenetre ignoree."
 } else {
-    $ok = Open-WsWindow -Username "admin" -Password $adminPassword -ApiUrl $apiUrl -WsUrl $wsUrl -WindowColor "Yellow"
+    $secureAdminPassword = ConvertTo-SecureString $adminPassword -AsPlainText -Force
+    $ok = Open-WsWindow -Username "admin" -Password $secureAdminPassword -ApiUrl $apiUrl -WsUrl $wsUrl -WindowColor "Yellow"
     if ($ok) { $opened++ }
 }
 
