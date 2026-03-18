@@ -2,6 +2,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { findById } from "../repositories/userRepository.js";
 import { logInfo, logWarn, logError } from "../utils/logger.js";
+import { createGameOrchestrator } from "../game/gameOrchestrator.js";
+import { findActiveGame } from "../repositories/gameanswerRepository.js";
+import { findParticipantsByGameId } from "../repositories/gameRepository.js";
 
 export const MAX_BUZZERS = 10;
 export const AUTH_TIMEOUT_MS = 60_000;
@@ -11,6 +14,12 @@ export const WS_CLOSE_TOKEN_EXPIRED = 4002;
 export const WS_CLOSE_AUTH_TIMEOUT = 4003;
 export const WS_CLOSE_SESSION_REPLACED = 4004;
 
+/** Message types reserved for admin (game master). */
+const ADMIN_MESSAGE_TYPES = new Set(["trigger_title", "trigger_choices", "trigger_correction", "trigger_next_question"]);
+
+/** Message types reserved for buzzers (players). */
+const BUZZER_MESSAGE_TYPES = new Set(["answer"]);
+
 /**
  * Attaches a WebSocket server to the existing HTTP server on the /ws endpoint.
  *
@@ -19,31 +28,214 @@ export const WS_CLOSE_SESSION_REPLACED = 4004;
  * @param {string} jwtSecret
  * @param {Object} [opts]
  * @param {number} [opts.authTimeoutMs] - Auth timeout in ms (injectable for tests)
+ * @param {Object} [opts.orchestratorOptions] - Options forwarded to createGameOrchestrator (injectable for tests)
  * @returns {WebSocketServer}
  */
 export function attachWebSocket(httpServer, db, jwtSecret, {
   authTimeoutMs = AUTH_TIMEOUT_MS,
+  orchestratorOptions = {},
 } = {}) {
   const wss = new WebSocketServer({ noServer: true });
 
   // registry: Map<sub, { ws, role, username, connectedAt }>
   const registry = new Map();
 
-  function buzzersConnected() {
-    return [...registry.values()].filter((c) => c.role === "buzzer").length;
+  // ── Sender helpers for the orchestrator ──────────────────────────────────
+
+  function sendJson(ws, msg) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    }
   }
 
-  function adminConnected() {
-    return [...registry.values()].filter((c) => c.role === "admin").length;
+  const sender = {
+    /** Broadcast a message to ALL connected clients (admin + buzzers). */
+    broadcast(msg) {
+      for (const entry of registry.values()) {
+        sendJson(entry.ws, msg);
+      }
+    },
+
+    /** Send a message to the connected admin, if any. */
+    sendToAdmin(msg) {
+      for (const entry of registry.values()) {
+        if (entry.role === "admin") {
+          sendJson(entry.ws, msg);
+          break;
+        }
+      }
+    },
+
+    /**
+     * Send a message to the buzzer whose participant name matches the given order.
+     * Resolves participant name from the active game, then finds the buzzer
+     * whose username matches that name (case-insensitive).
+     *
+     * @param {number} participantOrder - 1-based order in T_GAME_PARTICIPANT_GPA
+     * @param {Object} msg
+     */
+    sendToBuzzer(participantOrder, msg) {
+      const game = findActiveGame(db);
+      if (!game) return;
+
+      const participants = findParticipantsByGameId(db, game.GAM_ID);
+      const participant = participants.find((p) => p.GPA_ORDER === participantOrder);
+      if (!participant) return;
+
+      const targetName = participant.GPA_NAME.toLowerCase();
+      for (const entry of registry.values()) {
+        if (entry.role === "buzzer" && entry.username.toLowerCase() === targetName) {
+          sendJson(entry.ws, msg);
+          break;
+        }
+      }
+    },
+  };
+
+  // ── Orchestrator ──────────────────────────────────────────────────────────
+
+  const orchestrator = createGameOrchestrator(db, sender, orchestratorOptions);
+
+  // CA-36: recover any interrupted game on startup
+  orchestrator.recoverFromCrash();
+
+  // Tracks when the current question's choices were shown (used to compute timeMs for answers)
+  let questionStartedAtMs = null;
+
+  // ── Game message handler (post-auth) ─────────────────────────────────────
+
+  /**
+   * Resolves the participant order for a buzzer by matching its username
+   * against the active game's participants.
+   *
+   * @param {string} username
+   * @returns {number|null}
+   */
+  function resolveParticipantOrder(username) {
+    const game = findActiveGame(db);
+    if (!game) return null;
+
+    const participants = findParticipantsByGameId(db, game.GAM_ID);
+    const match = participants.find(
+      (p) => p.GPA_NAME.toLowerCase() === username.toLowerCase()
+    );
+    return match ? match.GPA_ORDER : null;
   }
 
-  function connectedSummary() {
-    return {
-      buzzers_connected: buzzersConnected(),
-      buzzers_max: MAX_BUZZERS,
-      admin_connected: adminConnected(),
-    };
+  /**
+   * Handles a game-related message received from an authenticated client.
+   * Enforces CA-37, CA-38, CA-40, CA-41, CA-42.
+   *
+   * @param {Buffer|string} data
+   * @param {string} sub
+   * @param {import("ws").WebSocket} ws
+   */
+  async function handleGameMessage(data, sub, ws) {
+    const entry = registry.get(sub);
+    if (!entry) return;
+
+    const { role, username } = entry;
+
+    // CA-41: silently ignore invalid JSON, log WARN
+    let msg;
+    try {
+      msg = JSON.parse(data.toString());
+    } catch {
+      logWarn("GAME_MESSAGE_IGNORED", { reason: "Invalid JSON", sub });
+      return;
+    }
+
+    // CA-40: silently ignore unknown or missing type, log WARN
+    if (!msg || typeof msg.type !== "string") {
+      logWarn("GAME_MESSAGE_IGNORED", { reason: "Unknown type", sub });
+      return;
+    }
+
+    const { type } = msg;
+
+    // CA-37: buzzer sending admin-only message → ignore, WARN
+    if (role === "buzzer" && ADMIN_MESSAGE_TYPES.has(type)) {
+      logWarn("GAME_MESSAGE_IGNORED", { reason: "Role not allowed to send this message type", role, type, sub });
+      return;
+    }
+
+    // CA-38: admin sending buzzer-only message → ignore, WARN
+    if (role === "admin" && BUZZER_MESSAGE_TYPES.has(type)) {
+      logWarn("GAME_MESSAGE_IGNORED", { reason: "Role not allowed to send this message type", role, type, sub });
+      return;
+    }
+
+    // CA-40: fully unknown type (neither admin nor buzzer message) → ignore, WARN
+    if (!ADMIN_MESSAGE_TYPES.has(type) && !BUZZER_MESSAGE_TYPES.has(type)) {
+      logWarn("GAME_MESSAGE_IGNORED", { reason: "Unknown type", type, sub });
+      return;
+    }
+
+    // ── Admin messages ──────────────────────────────────────────────────────
+
+    if (role === "admin") {
+      let result;
+
+      if (type === "trigger_title") {
+        result = orchestrator.handleTriggerTitle();
+        if (result.ok) {
+          questionStartedAtMs = null; // reset for next question
+        }
+      } else if (type === "trigger_choices") {
+        result = orchestrator.handleTriggerChoices();
+        if (result.ok) {
+          questionStartedAtMs = Date.now();
+        }
+      } else if (type === "trigger_correction") {
+        result = await orchestrator.handleTriggerCorrection();
+      } else if (type === "trigger_next_question") {
+        result = orchestrator.handleTriggerNextQuestion();
+      }
+
+      if (result && !result.ok) {
+        sendJson(ws, {
+          type: "error",
+          code: result.error.code,
+          message: result.error.message,
+        });
+      }
+      return;
+    }
+
+    // ── Buzzer messages ─────────────────────────────────────────────────────
+
+    if (role === "buzzer") {
+      // CA-42: validate required fields for 'answer'
+      if (typeof msg.value !== "string") {
+        sendJson(ws, {
+          type: "error",
+          code: "INVALID_MESSAGE",
+          message: "Missing or invalid 'value' field.",
+        });
+        return;
+      }
+
+      const participantOrder = resolveParticipantOrder(username);
+      // CA-21: participant not in game → orchestrator will reject via UNKNOWN_PARTICIPANT
+      const timeMs = questionStartedAtMs ? Date.now() - questionStartedAtMs : 0;
+
+      const result = orchestrator.handleAnswer(
+        participantOrder ?? -1,
+        msg.value,
+        timeMs
+      );
+
+      if (!result.accepted) {
+        logWarn("GAME_ANSWER_IGNORED", {
+          reason: result.reason,
+          participant_order: participantOrder,
+          sub,
+        });
+      }
+    }
   }
+
+  // ── WebSocket lifecycle ───────────────────────────────────────────────────
 
   httpServer.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -69,8 +261,9 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     }, authTimeoutMs);
 
     ws.on("message", (data) => {
-      // Ignore messages after authentication (CA-23)
+      // Post-auth: route to game message handler (CA-37 to CA-42)
       if (sub !== null) {
+        handleGameMessage(data, sub, ws);
         return;
       }
 
@@ -213,6 +406,22 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       }
     });
   });
+
+  function buzzersConnected() {
+    return [...registry.values()].filter((c) => c.role === "buzzer").length;
+  }
+
+  function adminConnected() {
+    return [...registry.values()].filter((c) => c.role === "admin").length;
+  }
+
+  function connectedSummary() {
+    return {
+      buzzers_connected: buzzersConnected(),
+      buzzers_max: MAX_BUZZERS,
+      admin_connected: adminConnected(),
+    };
+  }
 
   return wss;
 }
