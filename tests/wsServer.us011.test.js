@@ -1,0 +1,770 @@
+/**
+ * Tests for US-011 — WebSocket game message handling.
+ * Covers CA-37, CA-38, CA-40, CA-41, CA-42, and the full MCQ workflow
+ * wired through the WebSocket server.
+ */
+
+import { createServer } from "node:http";
+import { openDatabase } from "../src/database/database.js";
+import { WebSocket } from "ws";
+import jwt from "jsonwebtoken";
+import { attachWebSocket } from "../src/websocket/wsServer.js";
+
+const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+function createTestDb() {
+  const db = openDatabase(":memory:");
+
+  db.prepare(
+    `INSERT INTO T_THEME_THM (THM_ID, THM_NAME, THM_CREATED_AT) VALUES (?, ?, ?)`
+  ).run("thm-1", "Science", "2026-03-17T10:00:00.000Z");
+
+  // 3 MCQ questions
+  for (let i = 1; i <= 3; i++) {
+    db.prepare(
+      `INSERT INTO T_QUESTION_QST
+         (QST_ID, QST_TYPE, QST_THEME_ID, QST_TITLE,
+          QST_CHOICE_A, QST_CHOICE_B, QST_CHOICE_C, QST_CHOICE_D,
+          QST_CORRECT_ANSWER, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      `qst-${i}`, "MCQ", "thm-1",
+      `Question ${i} de test ?`,
+      "Paris", "Lyon", "Marseille", "Toulouse",
+      "Paris", 1, 10, 10, "2026-03-17T10:00:00.000Z"
+    );
+  }
+
+  db.prepare(
+    `INSERT INTO T_QUIZ_QUZ (QUZ_ID, QUZ_NAME, QUZ_CREATED_AT) VALUES (?, ?, ?)`
+  ).run("quiz-1", "Mon quiz", "2026-03-17T10:00:00.000Z");
+
+  for (let i = 1; i <= 3; i++) {
+    db.prepare(
+      `INSERT INTO T_QUIZ_QUESTION_QQN (QQN_QUIZ_ID, QQN_QUESTION_ID, QQN_ORDER) VALUES (?, ?, ?)`
+    ).run("quiz-1", `qst-${i}`, i);
+  }
+
+  // Game in OPEN state
+  db.prepare(
+    `INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CURRENT_QUESTION_INDEX, GAM_CREATED_AT)
+     VALUES (?, ?, 'OPEN', 0, ?)`
+  ).run("gam-1", "quiz-1", "2026-03-17T10:00:00.000Z");
+
+  // Participants: Alice (1), Bob (2), Charlie (3)
+  for (const [i, name] of [[1, "Alice"], [2, "Bob"], [3, "Charlie"]]) {
+    db.prepare(
+      `INSERT INTO T_GAME_PARTICIPANT_GPA (GPA_GAME_ID, GPA_NAME, GPA_ORDER) VALUES (?, ?, ?)`
+    ).run("gam-1", name, i);
+  }
+
+  // Users: admin + 3 buzzers (username = participant name for mapping)
+  db.prepare(
+    `INSERT INTO T_USER_USR (USR_ID, USR_USERNAME, USR_PASSWORD, USR_ROLE, USR_CREATED_AT)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run("admin-1", "admin", "hashed", "admin", "2026-03-17T10:00:00.000Z");
+
+  for (const [i, name] of [[1, "Alice"], [2, "Bob"], [3, "Charlie"]]) {
+    db.prepare(
+      `INSERT INTO T_USER_USR (USR_ID, USR_USERNAME, USR_PASSWORD, USR_ROLE, USR_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(`buzzer-${i}`, name, "hashed", "buzzer", "2026-03-17T10:00:00.000Z");
+  }
+
+  return db;
+}
+
+function makeToken(sub, role) {
+  return jwt.sign({ sub, role }, JWT_SECRET, { algorithm: "HS256", expiresIn: 3600 });
+}
+
+async function startServer(db, opts = {}) {
+  const server = createServer();
+  const wss = attachWebSocket(server, db, JWT_SECRET, {
+    authTimeoutMs: 100,
+    orchestratorOptions: { retryOptions: { maxRetries: 3, baseDelayMs: 1 } },
+    ...opts,
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return { server, wss };
+}
+
+async function teardown(server, wss) {
+  for (const client of wss.clients) client.terminate();
+  await new Promise((resolve) => server.close(resolve));
+}
+
+function connectWs(server) {
+  const port = server.address().port;
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    ws.once("open", () => resolve(ws));
+    ws.once("error", reject);
+  });
+}
+
+function waitForMessage(ws) {
+  return new Promise((resolve, reject) => {
+    ws.once("message", (data) => {
+      try { resolve(JSON.parse(data.toString())); }
+      catch (e) { reject(e); }
+    });
+    ws.once("error", reject);
+  });
+}
+
+function collectMessages(ws, count, timeoutMs = 2000) {
+  return new Promise((resolve, reject) => {
+    const msgs = [];
+    const timer = setTimeout(() => resolve(msgs), timeoutMs);
+    ws.on("message", (data) => {
+      try {
+        msgs.push(JSON.parse(data.toString()));
+        if (msgs.length >= count) {
+          clearTimeout(timer);
+          resolve(msgs);
+        }
+      } catch (e) { reject(e); }
+    });
+  });
+}
+
+async function authenticate(ws, sub, role) {
+  const msgPromise = waitForMessage(ws);
+  ws.send(JSON.stringify({ type: "auth", token: makeToken(sub, role) }));
+  const msg = await msgPromise;
+  expect(msg.type).toBe("auth_success");
+  return msg;
+}
+
+function captureConsole() {
+  const captured = { log: [], warn: [], error: [] };
+  const origLog = console.log;
+  const origWarn = console.warn;
+  const origError = console.error;
+  console.log = (m) => captured.log.push(m);
+  console.warn = (m) => captured.warn.push(m);
+  console.error = (m) => captured.error.push(m);
+  return { captured, restore: () => { console.log = origLog; console.warn = origWarn; console.error = origError; } };
+}
+
+// ---------------------------------------------------------------------------
+// Setup / Teardown
+// ---------------------------------------------------------------------------
+
+let db, server, wss;
+let captured, restore;
+
+beforeEach(async () => {
+  db = createTestDb();
+  ({ captured, restore } = captureConsole());
+  ({ server, wss } = await startServer(db));
+});
+
+afterEach(async () => {
+  await teardown(server, wss);
+  db.close();
+  restore();
+});
+
+// ---------------------------------------------------------------------------
+// CA-41 — Invalid JSON after authentication → ignored, WARN
+// ---------------------------------------------------------------------------
+describe("CA-41 — invalid JSON after auth", () => {
+  it("should ignore invalid JSON silently and stay connected", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "admin-1", "admin");
+
+    ws.send("not valid json!!!");
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-40 — Unknown message type after authentication → ignored, WARN
+// ---------------------------------------------------------------------------
+describe("CA-40 — unknown message type after auth", () => {
+  it("should ignore unknown type from admin and stay connected", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "admin-1", "admin");
+
+    ws.send(JSON.stringify({ type: "unknown_event" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+
+  it("should ignore unknown type from buzzer and stay connected", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    ws.send(JSON.stringify({ type: "unknown_event" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+
+  it("should ignore message with missing type field", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "admin-1", "admin");
+
+    ws.send(JSON.stringify({ data: "something" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-37 — Buzzer sending admin-only message → ignored, WARN
+// ---------------------------------------------------------------------------
+describe("CA-37 — buzzer sending admin-only message", () => {
+  it("should ignore trigger_title from buzzer", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    ws.send(JSON.stringify({ type: "trigger_title" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+
+  it("should ignore trigger_choices from buzzer", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    ws.send(JSON.stringify({ type: "trigger_choices" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+
+  it("should ignore trigger_correction from buzzer", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    ws.send(JSON.stringify({ type: "trigger_correction" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+
+  it("should ignore trigger_next_question from buzzer", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    ws.send(JSON.stringify({ type: "trigger_next_question" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-38 — Admin sending buzzer-only message → ignored, WARN
+// ---------------------------------------------------------------------------
+describe("CA-38 — admin sending buzzer-only message", () => {
+  it("should ignore 'answer' from admin", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "admin-1", "admin");
+
+    ws.send(JSON.stringify({ type: "answer", value: "A" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(ws.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-42 — answer with missing/invalid fields → error INVALID_MESSAGE
+// ---------------------------------------------------------------------------
+describe("CA-42 — answer with missing fields", () => {
+  it("should return INVALID_MESSAGE when 'value' is missing", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    const msgPromise = waitForMessage(ws);
+    ws.send(JSON.stringify({ type: "answer" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_MESSAGE");
+  });
+
+  it("should return INVALID_MESSAGE when 'value' is not a string (number)", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    const msgPromise = waitForMessage(ws);
+    ws.send(JSON.stringify({ type: "answer", value: 42 }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_MESSAGE");
+  });
+
+  it("should return INVALID_MESSAGE when 'value' is null", async () => {
+    const ws = await connectWs(server);
+    await authenticate(ws, "buzzer-1", "buzzer");
+
+    const msgPromise = waitForMessage(ws);
+    ws.send(JSON.stringify({ type: "answer", value: null }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_MESSAGE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-4 / CA-6 — trigger_title: valid and error cases
+// ---------------------------------------------------------------------------
+describe("trigger_title", () => {
+  it("CA-4: admin trigger_title broadcasts question_title to all connected clients", async () => {
+    const adminWs = await connectWs(server);
+    const buzzerWs = await connectWs(server);
+
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzerWs, "buzzer-1", "buzzer");
+
+    const adminMsgPromise = waitForMessage(adminWs);
+    const buzzerMsgPromise = waitForMessage(buzzerWs);
+
+    adminWs.send(JSON.stringify({ type: "trigger_title" }));
+
+    const adminMsg = await adminMsgPromise;
+    const buzzerMsg = await buzzerMsgPromise;
+
+    expect(adminMsg.type).toBe("question_title");
+    expect(buzzerMsg.type).toBe("question_title");
+    expect(adminMsg.question_index).toBe(0);
+    expect(adminMsg.question_type).toBe("MCQ");
+    expect(adminMsg.title).toBeDefined();
+    expect(adminMsg.time_limit).toBe(10);
+  });
+
+  it("CA-6: trigger_title in wrong state returns INVALID_STATE error to admin", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    const msgPromise = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_title" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_STATE");
+  });
+
+  it("CA-7: trigger_title with no more questions returns NO_MORE_QUESTIONS", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_CURRENT_QUESTION_INDEX = 99 WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    const msgPromise = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_title" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("NO_MORE_QUESTIONS");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-8 / CA-9 / CA-10 / CA-11 / CA-12 — trigger_choices
+// ---------------------------------------------------------------------------
+describe("trigger_choices", () => {
+  beforeEach(() => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+  });
+
+  it("CA-8: admin trigger_choices broadcasts question_choices to all connected clients", async () => {
+    const adminWs = await connectWs(server);
+    const buzzerWs = await connectWs(server);
+
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzerWs, "buzzer-1", "buzzer");
+
+    const adminMsgPromise = waitForMessage(adminWs);
+    const buzzerMsgPromise = waitForMessage(buzzerWs);
+
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+
+    const adminMsg = await adminMsgPromise;
+    const buzzerMsg = await buzzerMsgPromise;
+
+    expect(adminMsg.type).toBe("question_choices");
+    expect(buzzerMsg.type).toBe("question_choices");
+    expect(adminMsg.choices).toEqual(["Paris", "Lyon", "Marseille", "Toulouse"]);
+    expect(adminMsg.started_at).toBeDefined();
+    expect(adminMsg.time_limit).toBe(10);
+  });
+
+  it("CA-12: trigger_choices in wrong state returns INVALID_STATE", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'OPEN' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    const msgPromise = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_STATE");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-13 / CA-14 / CA-15 / CA-16 — answer handling
+// ---------------------------------------------------------------------------
+describe("answer handling", () => {
+  beforeEach(() => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN' WHERE GAM_ID = ?").run("gam-1");
+  });
+
+  it("CA-14: buzzer receives answer_received after sending valid answer", async () => {
+    const adminWs = await connectWs(server);
+    const buzzerWs = await connectWs(server);
+
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzerWs, "buzzer-1", "buzzer");
+
+    // Trigger choices to create the answer processor
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+    const adminMsg1 = waitForMessage(adminWs);
+    const buzzerMsg1 = waitForMessage(buzzerWs);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await adminMsg1;
+    await buzzerMsg1;
+
+    // Send answer from buzzer
+    const buzzerResponsePromise = waitForMessage(buzzerWs);
+    buzzerWs.send(JSON.stringify({ type: "answer", value: "A" }));
+    const response = await buzzerResponsePromise;
+
+    expect(response.type).toBe("answer_received");
+  });
+
+  it("CA-15: admin receives player_answered when buzzer answers", async () => {
+    const adminWs = await connectWs(server);
+    const buzzerWs = await connectWs(server);
+
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzerWs, "buzzer-1", "buzzer");
+
+    // Trigger choices
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+    const adminMsg1 = waitForMessage(adminWs);
+    const buzzerMsg1 = waitForMessage(buzzerWs);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await adminMsg1;
+    await buzzerMsg1;
+
+    // Collect next message from admin
+    const adminResponsePromise = waitForMessage(adminWs);
+    buzzerWs.send(JSON.stringify({ type: "answer", value: "B" }));
+    const adminNotif = await adminResponsePromise;
+
+    expect(adminNotif.type).toBe("player_answered");
+    expect(adminNotif.participant_name).toBe("Alice");
+    expect(adminNotif.answer).toBe("B");
+    expect(typeof adminNotif.time_ms).toBe("number");
+  });
+
+  it("CA-17: answer in wrong game state is ignored", async () => {
+    // Game is QUESTION_OPEN but no processor (no trigger_choices was called)
+    const buzzerWs = await connectWs(server);
+    await authenticate(buzzerWs, "buzzer-1", "buzzer");
+
+    buzzerWs.send(JSON.stringify({ type: "answer", value: "A" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Connection still open, ignored silently
+    expect(buzzerWs.readyState).toBe(WebSocket.OPEN);
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_ANSWER_IGNORED")).toBe(true);
+  });
+
+  it("CA-21: answer from buzzer with no matching participant is ignored", async () => {
+    // Add a buzzer user NOT in the game participants
+    db.prepare(
+      `INSERT INTO T_USER_USR (USR_ID, USR_USERNAME, USR_PASSWORD, USR_ROLE, USR_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run("buzzer-stranger", "Stranger", "hashed", "buzzer", "2026-03-17T10:00:00.000Z");
+
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    const strangerWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(strangerWs, "buzzer-stranger", "buzzer");
+
+    // Start question open
+    const a1 = waitForMessage(adminWs);
+    const s1 = waitForMessage(strangerWs);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await a1;
+    await s1;
+
+    strangerWs.send(JSON.stringify({ type: "answer", value: "A" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    const warns = captured.warn.map((m) => JSON.parse(m));
+    expect(warns.some((w) => w.event === "GAME_ANSWER_IGNORED")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-27 / CA-28 — trigger_correction error cases
+// ---------------------------------------------------------------------------
+describe("trigger_correction", () => {
+  it("CA-27: trigger_correction in wrong state returns INVALID_STATE", async () => {
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    const msgPromise = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_correction" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_STATE");
+  });
+
+  it("CA-28: trigger_correction while timer running and not all answered returns ANSWERS_PENDING", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    const buzzerWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzerWs, "buzzer-1", "buzzer");
+
+    // Start choices (timer is running)
+    const a1 = waitForMessage(adminWs);
+    const b1 = waitForMessage(buzzerWs);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await a1;
+    await b1;
+
+    // Only 1 out of 3 answers
+    const b2 = waitForMessage(buzzerWs);
+    buzzerWs.send(JSON.stringify({ type: "answer", value: "A" }));
+    await b2;
+
+    const msgPromise = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_correction" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("ANSWERS_PENDING");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-31 — trigger_next_question error case
+// ---------------------------------------------------------------------------
+describe("trigger_next_question", () => {
+  it("CA-31: trigger_next_question in wrong state returns INVALID_STATE", async () => {
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    const msgPromise = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_next_question" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_STATE");
+  });
+
+  it("CA-29: trigger_next_question increments question index and returns to OPEN", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_CLOSED' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    adminWs.send(JSON.stringify({ type: "trigger_next_question" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    const row = db.prepare("SELECT GAM_STATUS, GAM_CURRENT_QUESTION_INDEX FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(row.GAM_STATUS).toBe("OPEN");
+    expect(row.GAM_CURRENT_QUESTION_INDEX).toBe(1);
+  });
+
+  it("CA-30: trigger_next_question on last question transitions to COMPLETED", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_CLOSED', GAM_CURRENT_QUESTION_INDEX = 2 WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    adminWs.send(JSON.stringify({ type: "trigger_next_question" }));
+    await new Promise((r) => setTimeout(r, 30));
+
+    const row = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(row.GAM_STATUS).toBe("COMPLETED");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-24 / CA-25 — Full correction flow: results sent to buzzers and admin
+// ---------------------------------------------------------------------------
+describe("trigger_correction — full result flow", () => {
+  it("CA-24 + CA-25: sends question_result to each buzzer and question_result_summary to admin", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    const buzzer1Ws = await connectWs(server);
+    const buzzer2Ws = await connectWs(server);
+    const buzzer3Ws = await connectWs(server);
+
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzer1Ws, "buzzer-1", "buzzer");
+    await authenticate(buzzer2Ws, "buzzer-2", "buzzer");
+    await authenticate(buzzer3Ws, "buzzer-3", "buzzer");
+
+    // trigger_choices → collect from all 4
+    const msgs1 = Promise.all([
+      waitForMessage(adminWs),
+      waitForMessage(buzzer1Ws),
+      waitForMessage(buzzer2Ws),
+      waitForMessage(buzzer3Ws),
+    ]);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await msgs1;
+
+    // All 3 buzzers answer
+    const b1Ack = waitForMessage(buzzer1Ws);
+    buzzer1Ws.send(JSON.stringify({ type: "answer", value: "A" })); // correct
+    await b1Ack;
+
+    const b2Ack = waitForMessage(buzzer2Ws);
+    buzzer2Ws.send(JSON.stringify({ type: "answer", value: "B" })); // wrong
+    await b2Ack;
+
+    const b3Ack = waitForMessage(buzzer3Ws);
+    buzzer3Ws.send(JSON.stringify({ type: "answer", value: "A" })); // correct
+    await b3Ack;
+
+    // admin receives all_answered
+    await waitForMessage(adminWs); // all_answered
+
+    // trigger_correction
+    adminWs.send(JSON.stringify({ type: "trigger_correction" }));
+
+    // Collect results: 3 buzzers get question_result, admin gets question_result_summary
+    const buzzer1Result = await waitForMessage(buzzer1Ws);
+    const buzzer2Result = await waitForMessage(buzzer2Ws);
+    const buzzer3Result = await waitForMessage(buzzer3Ws);
+    const adminSummary = await waitForMessage(adminWs);
+
+    expect(buzzer1Result.type).toBe("question_result");
+    expect(buzzer1Result.correct_answer).toBe("A");
+    expect(buzzer1Result.player_answer).toBe("A");
+    expect(buzzer1Result.correct).toBe(true);
+    expect(buzzer1Result.points_earned).toBe(10);
+
+    expect(buzzer2Result.type).toBe("question_result");
+    expect(buzzer2Result.correct).toBe(false);
+    expect(buzzer2Result.points_earned).toBe(0);
+
+    expect(buzzer3Result.type).toBe("question_result");
+    expect(buzzer3Result.correct).toBe(true);
+
+    expect(adminSummary.type).toBe("question_result_summary");
+    expect(adminSummary.results).toHaveLength(3);
+    expect(adminSummary.ranking).toHaveLength(3);
+    expect(adminSummary.correct_answer).toBe("A");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CA-11 — Timer expiration broadcasts timer_end
+// ---------------------------------------------------------------------------
+describe("CA-11 — timer expiration", () => {
+  it("broadcasts timer_end when the timer expires", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    const choicesMsg = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await choicesMsg;
+
+    // Wait for timer_end (time_limit = 10s in test DB)
+    const timerEnd = await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("timer_end not received")), 12000);
+      adminWs.on("message", (data) => {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "timer_end") {
+          clearTimeout(t);
+          resolve(msg);
+        }
+      });
+    });
+
+    expect(timerEnd.type).toBe("timer_end");
+  }, 15000);
+});
+
+// ---------------------------------------------------------------------------
+// CA-36 — Crash recovery: game in QUESTION_OPEN reset to OPEN on server start
+// ---------------------------------------------------------------------------
+describe("CA-36 — crash recovery", () => {
+  it("should recover a game stuck in QUESTION_OPEN on server startup", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN', GAM_CURRENT_QUESTION_INDEX = 1 WHERE GAM_ID = ?").run("gam-1");
+
+    // Create a new server (triggers recoverFromCrash)
+    const newServer = createServer();
+    attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
+    await new Promise((r) => newServer.listen(0, "127.0.0.1", r));
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    const row = db.prepare("SELECT GAM_STATUS, GAM_CURRENT_QUESTION_INDEX FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(row.GAM_STATUS).toBe("OPEN");
+    expect(row.GAM_CURRENT_QUESTION_INDEX).toBe(1);
+
+    await new Promise((r) => newServer.close(r));
+  });
+
+  it("should recover a game stuck in QUESTION_TITLE on server startup", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const newServer = createServer();
+    attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
+    await new Promise((r) => newServer.listen(0, "127.0.0.1", r));
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    const row = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(row.GAM_STATUS).toBe("OPEN");
+
+    await new Promise((r) => newServer.close(r));
+  });
+});

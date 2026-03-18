@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import Database from "better-sqlite3";
+import { openDatabase } from "../src/database/database.js";
 import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import {
@@ -19,18 +19,8 @@ const AUTH_TIMEOUT = 60; // ms — short for tests
 // ---------------------------------------------------------------------------
 
 function createTestDb() {
-  const db = new Database(":memory:");
-  db.exec(`
-    CREATE TABLE T_USER_USR (
-      USR_ID TEXT PRIMARY KEY,
-      USR_USERNAME TEXT NOT NULL UNIQUE COLLATE NOCASE,
-      USR_PASSWORD TEXT NOT NULL,
-      USR_ROLE TEXT NOT NULL DEFAULT 'buzzer' CHECK (USR_ROLE IN ('admin','buzzer')),
-      USR_CREATED_AT TEXT NOT NULL,
-      USR_LAST_UPDATED_AT TEXT DEFAULT NULL
-    );
-  `);
-  return db;
+  // Use openDatabase to create all tables (including game tables needed by the orchestrator)
+  return openDatabase(":memory:");
 }
 
 function insertUser(db, { id, username, role }) {
