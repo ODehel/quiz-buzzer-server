@@ -4,11 +4,11 @@ describe("US-011 — Database schema extensions", () => {
   let db;
 
   beforeEach(() => {
-    db.prepare(
-      `INSERT INTO T_QUIZ_QUI (QUI_ID, QUI_NAME) VALUES (?, ?)`
-    ).run("quiz-1", "Test Quiz");
     db = openDatabase(":memory:");
-  });
+    db.prepare(
+      `INSERT INTO T_QUIZ_QUZ (QUZ_ID, QUZ_NAME, QUZ_CREATED_AT) VALUES (?, ?, ?)`
+    ).run("quiz-1", "Test Quiz", "2026-03-17T10:00:00.000Z");
+});
 
   afterEach(() => db.close());
 
