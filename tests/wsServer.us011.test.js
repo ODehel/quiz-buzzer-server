@@ -573,9 +573,11 @@ describe("trigger_correction", () => {
     await b1;
 
     // Only 1 out of 3 answers
+    const a2 = waitForMessage(adminWs);
     const b2 = waitForMessage(buzzerWs);
     buzzerWs.send(JSON.stringify({ type: "answer", value: "A" }));
     await b2;
+    await a2; // consume the player_answered message sent to admin
 
     const msgPromise = waitForMessage(adminWs);
     adminWs.send(JSON.stringify({ type: "trigger_correction" }));
