@@ -35,7 +35,7 @@ function createTestDb() {
       `qst-${i}`, "MCQ", "thm-1",
       `Question ${i} de test ?`,
       "Paris", "Lyon", "Marseille", "Toulouse",
-      "Paris", 1, 10, 10, "2026-03-17T10:00:00.000Z"
+      "Paris", 1, 1, 10, "2026-03-17T10:00:00.000Z"
     );
   }
 
@@ -364,7 +364,7 @@ describe("trigger_title", () => {
     expect(adminMsg.question_index).toBe(0);
     expect(adminMsg.question_type).toBe("MCQ");
     expect(adminMsg.title).toBeDefined();
-    expect(adminMsg.time_limit).toBe(10);
+    expect(adminMsg.time_limit).toBe(1);
   });
 
   it("CA-6: trigger_title in wrong state returns INVALID_STATE error to admin", async () => {
@@ -423,7 +423,7 @@ describe("trigger_choices", () => {
     expect(buzzerMsg.type).toBe("question_choices");
     expect(adminMsg.choices).toEqual(["Paris", "Lyon", "Marseille", "Toulouse"]);
     expect(adminMsg.started_at).toBeDefined();
-    expect(adminMsg.time_limit).toBe(10);
+    expect(adminMsg.time_limit).toBe(1);
   });
 
   it("CA-12: trigger_choices in wrong state returns INVALID_STATE", async () => {
@@ -716,9 +716,9 @@ describe("CA-11 — timer expiration", () => {
     adminWs.send(JSON.stringify({ type: "trigger_choices" }));
     await choicesMsg;
 
-    // Wait for timer_end (time_limit = 10s in test DB)
+    // Wait for timer_end (time_limit = 1s in test DB)
     const timerEnd = await new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("timer_end not received")), 12000);
+      const t = setTimeout(() => reject(new Error("timer_end not received")), 3000);
       adminWs.on("message", (data) => {
         const msg = JSON.parse(data.toString());
         if (msg.type === "timer_end") {
@@ -729,7 +729,7 @@ describe("CA-11 — timer expiration", () => {
     });
 
     expect(timerEnd.type).toBe("timer_end");
-  }, 15000);
+  }, 5000);
 });
 
 // ---------------------------------------------------------------------------
