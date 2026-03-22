@@ -7,7 +7,7 @@ import {
   getCumulativeScore,
   updateGameQuestionIndex,
   findActiveGame,
-} from "../src/repositories/gameAnswerRepository.js";
+} from "../src/repositories/gameanswerRepository.js";
 
 function createTestDb() {
   const db = openDatabase(":memory:");

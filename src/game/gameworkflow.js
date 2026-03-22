@@ -16,13 +16,14 @@ import { findGameById, updateGameStatus } from "../repositories/gameRepository.j
  * IN_ERROR est accessible depuis tout état non-terminal.
  */
 export const ALLOWED_TRANSITIONS = {
-  PENDING:         ["OPEN", "IN_ERROR"],
-  OPEN:            ["QUESTION_TITLE", "IN_ERROR"],
-  QUESTION_TITLE:  ["QUESTION_OPEN", "IN_ERROR"],
-  QUESTION_OPEN:   ["QUESTION_CLOSED", "IN_ERROR"],
-  QUESTION_CLOSED: ["OPEN", "COMPLETED", "IN_ERROR"],
-  COMPLETED:       [],
-  IN_ERROR:        [],
+  PENDING:          ["OPEN", "IN_ERROR"],
+  OPEN:             ["QUESTION_TITLE", "QUESTION_OPEN", "IN_ERROR"],
+  QUESTION_TITLE:   ["QUESTION_OPEN", "IN_ERROR"],
+  QUESTION_OPEN:    ["QUESTION_BUZZED", "QUESTION_CLOSED", "IN_ERROR"],
+  QUESTION_BUZZED:  ["QUESTION_OPEN", "QUESTION_CLOSED", "IN_ERROR"],
+  QUESTION_CLOSED:  ["OPEN", "COMPLETED", "IN_ERROR"],
+  COMPLETED:        [],
+  IN_ERROR:         [],
 };
 
 /**

@@ -15,10 +15,13 @@ export const WS_CLOSE_AUTH_TIMEOUT = 4003;
 export const WS_CLOSE_SESSION_REPLACED = 4004;
 
 /** Message types reserved for admin (game master). */
-const ADMIN_MESSAGE_TYPES = new Set(["trigger_title", "trigger_choices", "trigger_correction", "trigger_next_question"]);
+const ADMIN_MESSAGE_TYPES = new Set([
+  "trigger_title", "trigger_choices", "trigger_correction", "trigger_next_question",
+  "validate_answer", "invalidate_answer",
+]);
 
 /** Message types reserved for buzzers (players). */
-const BUZZER_MESSAGE_TYPES = new Set(["answer"]);
+const BUZZER_MESSAGE_TYPES = new Set(["answer", "buzz"]);
 
 /**
  * Attaches a WebSocket server to the existing HTTP server on the /ws endpoint.
@@ -190,6 +193,10 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         result = await orchestrator.handleTriggerCorrection();
       } else if (type === "trigger_next_question") {
         result = orchestrator.handleTriggerNextQuestion();
+      } else if (type === "validate_answer") {
+        result = await orchestrator.handleValidateAnswer();
+      } else if (type === "invalidate_answer") {
+        result = await orchestrator.handleInvalidateAnswer();
       }
 
       if (result && !result.ok) {
@@ -205,6 +212,25 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     // ── Buzzer messages ─────────────────────────────────────────────────────
 
     if (role === "buzzer") {
+      if (type === "buzz") {
+        // SPEED: handle buzz
+        const participantOrder = resolveParticipantOrder(username);
+        if (participantOrder === null) {
+          logWarn("GAME_BUZZ_IGNORED", { reason: "Not a participant", username, sub });
+          return;
+        }
+        const result = orchestrator.handleBuzz(sub, username, participantOrder);
+        if (!result.accepted) {
+          logWarn("GAME_BUZZ_IGNORED", {
+            reason: result.reason,
+            participant_order: participantOrder,
+            sub,
+          });
+        }
+        return;
+      }
+
+      // MCQ: handle answer
       // CA-42: validate required fields for 'answer'
       if (typeof msg.value !== "string") {
         sendJson(ws, {
