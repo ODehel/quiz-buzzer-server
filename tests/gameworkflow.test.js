@@ -4,7 +4,7 @@ import {
   ALLOWED_TRANSITIONS,
   resolveCurrentQuestion,
   hasMoreQuestions,
-} from "../src/game/gameWorkflow.js";
+} from "../src/game/gameworkflow.js";
 import { updateGameStatus } from "../src/repositories/gameRepository.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -162,9 +162,11 @@ describe("transitionState", () => {
       .toThrow("INVALID_TRANSITION");
   });
 
-  it("CA-3: throws INVALID_TRANSITION for OPEN → QUESTION_OPEN (skipping QUESTION_TITLE)", () => {
+  it("US-012 CA-1: OPEN → QUESTION_OPEN is now valid (SPEED questions skip QUESTION_TITLE)", () => {
     expect(() => transitionState(db, "gam-1", "OPEN", "QUESTION_OPEN"))
-      .toThrow("INVALID_TRANSITION");
+      .not.toThrow();
+    const actual = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(actual.GAM_STATUS).toBe("QUESTION_OPEN");
   });
 
   it("CA-3: throws INVALID_TRANSITION for QUESTION_OPEN → OPEN (skipping QUESTION_CLOSED)", () => {
@@ -188,6 +190,50 @@ describe("transitionState", () => {
   it("throws when game does not exist", () => {
     expect(() => transitionState(db, "nonexistent", "OPEN", "QUESTION_TITLE"))
       .toThrow("GAME_NOT_FOUND");
+  });
+
+  // ── US-012 SPEED transitions ──────────────────────────────────────────────
+
+  it("US-012 CA-1: QUESTION_OPEN → QUESTION_BUZZED is valid", () => {
+    updateGameStatus(db, "gam-1", "QUESTION_OPEN");
+    expect(() => transitionState(db, "gam-1", "QUESTION_OPEN", "QUESTION_BUZZED"))
+      .not.toThrow();
+    const actual = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(actual.GAM_STATUS).toBe("QUESTION_BUZZED");
+  });
+
+  it("US-012 CA-1: QUESTION_BUZZED → QUESTION_OPEN is valid (invalidation)", () => {
+    updateGameStatus(db, "gam-1", "QUESTION_BUZZED");
+    expect(() => transitionState(db, "gam-1", "QUESTION_BUZZED", "QUESTION_OPEN"))
+      .not.toThrow();
+    const actual = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(actual.GAM_STATUS).toBe("QUESTION_OPEN");
+  });
+
+  it("US-012 CA-1: QUESTION_BUZZED → QUESTION_CLOSED is valid (validation)", () => {
+    updateGameStatus(db, "gam-1", "QUESTION_BUZZED");
+    expect(() => transitionState(db, "gam-1", "QUESTION_BUZZED", "QUESTION_CLOSED"))
+      .not.toThrow();
+    const actual = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
+    expect(actual.GAM_STATUS).toBe("QUESTION_CLOSED");
+  });
+
+  it("US-012 CA-1: QUESTION_BUZZED → IN_ERROR is valid", () => {
+    updateGameStatus(db, "gam-1", "QUESTION_BUZZED");
+    expect(() => transitionState(db, "gam-1", "QUESTION_BUZZED", "IN_ERROR"))
+      .not.toThrow();
+  });
+
+  it("US-012 CA-3: QUESTION_BUZZED → COMPLETED is invalid", () => {
+    updateGameStatus(db, "gam-1", "QUESTION_BUZZED");
+    expect(() => transitionState(db, "gam-1", "QUESTION_BUZZED", "COMPLETED"))
+      .toThrow("INVALID_TRANSITION");
+  });
+
+  it("US-012 CA-3: QUESTION_BUZZED → OPEN is invalid", () => {
+    updateGameStatus(db, "gam-1", "QUESTION_BUZZED");
+    expect(() => transitionState(db, "gam-1", "QUESTION_BUZZED", "OPEN"))
+      .toThrow("INVALID_TRANSITION");
   });
 });
 
