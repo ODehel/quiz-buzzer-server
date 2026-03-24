@@ -97,11 +97,19 @@ async function getCreatedGameId() {
 // ─── POST /api/v1/games ───────────────────────────────────────────────────────
 
 describe("POST /api/v1/games", () => {
-  it("CA-1: creates a game and returns 201 without body", async () => {
+  it("CA-1: creates a game and returns 201 with the created game object", async () => {
     const res = await createValidGame();
     expect(res.status).toBe(201);
-    expect(res.body).toEqual({});
-    expect(res.text).toBe("");
+    expect(res.body.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+    expect(res.body.status).toBe("PENDING");
+    expect(res.body.quiz_id).toBe("018e4f5c-0000-7000-8000-000000000001");
+    expect(res.body.participants).toEqual([
+      { order: 1, name: "Alice" },
+      { order: 2, name: "Bob" },
+      { order: 3, name: "Charlie" },
+    ]);
   });
 
   it("CA-2 + CA-3 + CA-4: game has PENDING status, UUIDv7 id, ISO 8601 created_at", async () => {
