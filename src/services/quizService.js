@@ -122,7 +122,7 @@ export function createQuiz(db, name, questionIds) {
 
   // CA-4 : unicité insensible à la casse
   if (findQuizByName(db, normalized)) {
-    throw new AppError(409, "CONFLICT", "A quiz with this name already exists.");
+    throw new AppError(409, "QUIZ_ALREADY_EXISTS", "A quiz with this name already exists.");
   }
 
   const id = uuidv7();
@@ -189,7 +189,7 @@ export function updateQuizById(db, urlId, name, questionIds, bodyId) {
   // CA-4 sur le PUT : unicité si le nom change
   if (normalized.toLowerCase() !== existing.QUZ_NAME.toLowerCase()) {
     if (findQuizByName(db, normalized)) {
-      throw new AppError(409, "CONFLICT", "A quiz with this name already exists.");
+      throw new AppError(409, "QUIZ_ALREADY_EXISTS", "A quiz with this name already exists.");
     }
   }
 

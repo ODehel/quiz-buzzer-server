@@ -72,7 +72,7 @@ beforeEach((done) => {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     if (url.pathname === "/api/v1/quizzes") {
       collectionHandler(req, res, url);
-    } else if (url.pathname.match(/^\/api\/v1\/quizzes\/[^/]+$/)) {
+    } else if (url.pathname.match(/^\/api\/v1\/quizzes\/[^\/]+$/)) {
       resourceHandler(req, res, url);
     } else {
       res.writeHead(404);
@@ -124,7 +124,7 @@ describe("POST /api/v1/quizzes", () => {
     await createValidQuiz("Sciences du monde");
     const res = await createValidQuiz("SCIENCES DU MONDE");
     expect(res.status).toBe(409);
-    expect(res.body.error).toBe("CONFLICT");
+    expect(res.body.error).toBe("QUIZ_ALREADY_EXISTS");
   });
 
   it("CA-5: returns 400 for less than 10 questions", async () => {
