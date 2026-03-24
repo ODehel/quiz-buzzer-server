@@ -137,6 +137,8 @@ export function createGame(db, quizId, participants) {
     insertGame(db, { id, quizId, createdAt: now });
     insertParticipants(db, id, participants.map((n) => n.trim()));
   })();
+
+  return id;
 }
 
 /**
