@@ -123,9 +123,9 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
       }
 
       // CA-1 à CA-10 : création de la partie (validation + insertion)
-      createGame(db, body.quiz_id, body.participants);
-      res.writeHead(201);
-      res.end();
+      const id = createGame(db, body.quiz_id, body.participants);
+      const game = getGameById(db, id);
+      sendJson(res, 201, game);
     } catch (err) {
       handleError(res, err);
     }
