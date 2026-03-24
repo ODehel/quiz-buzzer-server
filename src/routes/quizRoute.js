@@ -15,6 +15,26 @@ const ALLOWED_FIELDS_POST = new Set(["name", "question_ids"]);
 const ALLOWED_FIELDS_PUT = new Set(["id", "name", "question_ids"]);
 
 /**
+ * Valide et parse les paramètres de pagination.
+ */
+function parsePagination(url) {
+  const rawPage = url.searchParams.get("page");
+  const rawLimit = url.searchParams.get("limit");
+
+  let page = rawPage !== null ? Number(rawPage) : 1;
+  let limit = rawLimit !== null ? Number(rawLimit) : 20;
+
+  if (
+    !Number.isInteger(page) || page < 1 ||
+    !Number.isInteger(limit) || limit < 1 || limit > 100
+  ) {
+    throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters.");
+  }
+
+  return { page, limit };
+}
+
+/**
  * Valide que le body ne contient que les champs autorisés (CA-12).
  *
  * @param {Object} body
@@ -93,8 +113,10 @@ export function createQuizzesCollectionHandler(db, config, authenticate, authori
       if (req.method === "GET") {
         // CA-18 : Filtrage optionnel par nom
         const nameFilter = url.searchParams.get("name") || null;
-        const quizzes = listQuizzes(db, nameFilter);
-        sendJson(res, 200, quizzes);
+        // CA-15 : Pagination
+        const { page, limit } = parsePagination(url);
+        const result = listQuizzes(db, nameFilter, page, limit);
+        sendJson(res, 200, result);
         return;
       }
 
