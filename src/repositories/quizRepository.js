@@ -65,27 +65,39 @@ export function findQuizByName(db, name) {
 /**
  * Liste tous les quiz avec leur question_summary, triés par création décroissante.
  * Filtre optionnel par nom (contient, insensible à la casse) — CA-17, CA-18, CA-19.
+ * Support pagination (page, limit).
  *
  * @param {import("better-sqlite3").Database} db
  * @param {string|null} nameFilter
- * @returns {Array}
+ * @param {number} page
+ * @param {number} limit
+ * @returns {{ data: Array, total: number }}
  */
-export function findAllQuizzes(db, nameFilter) {
+export function findAllQuizzes(db, nameFilter, page, limit) {
   const whereClause = nameFilter
     ? `WHERE LOWER(q.QUZ_NAME) LIKE LOWER(?)`
     : "";
   const params = nameFilter ? [`%${nameFilter}%`] : [];
 
+  // Compte le total des quiz (avec filtre si applicable)
+  const countStmt = db.prepare(
+    `SELECT COUNT(*) AS count FROM T_QUIZ_QUZ q ${whereClause}`
+  );
+  const total = countStmt.get(...params).count;
+
+  // Récupère les quiz paginés
+  const offset = (page - 1) * limit;
   const quizRows = db
     .prepare(
       `SELECT q.QUZ_ID, q.QUZ_NAME, q.QUZ_CREATED_AT, q.QUZ_LAST_UPDATED_AT
        FROM T_QUIZ_QUZ q
        ${whereClause}
-       ORDER BY q.QUZ_CREATED_AT DESC`
+       ORDER BY q.QUZ_CREATED_AT DESC
+       LIMIT ? OFFSET ?`
     )
-    .all(...params);
+    .all(...params, limit, offset);
 
-  if (quizRows.length === 0) return [];
+  if (quizRows.length === 0) return { data: [], total };
 
   // Calcul du question_summary pour chaque quiz via une jointure (CA-19)
   const summaryStmt = db.prepare(
@@ -96,7 +108,7 @@ export function findAllQuizzes(db, nameFilter) {
      GROUP BY qst.QST_LEVEL, qst.QST_TYPE`
   );
 
-  return quizRows.map((row) => {
+  const data = quizRows.map((row) => {
     const summaryRows = summaryStmt.all(row.QUZ_ID);
     const by_level = buildByLevel(summaryRows);
     const total = summaryRows.reduce((sum, r) => sum + r.count, 0);
@@ -109,6 +121,8 @@ export function findAllQuizzes(db, nameFilter) {
       question_summary: { total, by_level },
     };
   });
+
+  return { data, total };
 }
 
 /**

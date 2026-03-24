@@ -221,22 +221,33 @@ describe("POST /api/v1/quizzes", () => {
 // ─── GET /api/v1/quizzes ──────────────────────────────────────────────────────
 
 describe("GET /api/v1/quizzes", () => {
-  it("CA-15: returns 200 with list", async () => {
+  it("CA-15: returns 200 with paginated list", async () => {
     await createValidQuiz();
     const res = await request(server)
       .get("/api/v1/quizzes")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body).toHaveLength(1);
+    expect(res.body).toHaveProperty("data");
+    expect(res.body).toHaveProperty("page", 1);
+    expect(res.body).toHaveProperty("limit", 20);
+    expect(res.body).toHaveProperty("total", 1);
+    expect(res.body).toHaveProperty("total_pages", 1);
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data).toHaveLength(1);
   });
 
-  it("CA-16: returns 200 with empty array when no quizzes", async () => {
+  it("CA-16: returns 200 with empty pagination when no quizzes", async () => {
     const res = await request(server)
       .get("/api/v1/quizzes")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body).toEqual({
+      data: [],
+      page: 1,
+      limit: 20,
+      total: 0,
+      total_pages: 0,
+    });
   });
 
   it("CA-18: filters by ?name=", async () => {
@@ -246,8 +257,8 @@ describe("GET /api/v1/quizzes", () => {
       .get("/api/v1/quizzes?name=culture")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(1);
-    expect(res.body[0].name).toBe("Culture générale");
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].name).toBe("Culture générale");
   });
 
   it("CA-19: includes question_summary in each quiz", async () => {
@@ -255,8 +266,58 @@ describe("GET /api/v1/quizzes", () => {
     const res = await request(server)
       .get("/api/v1/quizzes")
       .set("Authorization", `Bearer ${adminToken}`);
-    expect(res.body[0].question_summary).toBeDefined();
-    expect(res.body[0].question_summary.total).toBe(10);
+    expect(res.body.data[0].question_summary).toBeDefined();
+    expect(res.body.data[0].question_summary.total).toBe(10);
+  });
+
+  it("CA-20: applies default pagination (page=1, limit=20)", async () => {
+    await createValidQuiz();
+    const res = await request(server)
+      .get("/api/v1/quizzes")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.page).toBe(1);
+    expect(res.body.limit).toBe(20);
+  });
+
+  it("CA-21: returns 400 when limit > 100", async () => {
+    const res = await request(server)
+      .get("/api/v1/quizzes?limit=200")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_PAGINATION");
+  });
+
+  it("CA-22: returns 400 for invalid pagination parameters", async () => {
+    let res = await request(server)
+      .get("/api/v1/quizzes?page=0")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_PAGINATION");
+
+    res = await request(server)
+      .get("/api/v1/quizzes?limit=-1")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_PAGINATION");
+
+    res = await request(server)
+      .get("/api/v1/quizzes?page=abc")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_PAGINATION");
+  });
+
+  it("CA-23: returns empty data when page beyond total", async () => {
+    await createValidQuiz();
+    const res = await request(server)
+      .get("/api/v1/quizzes?page=999")
+      .set("Authorization", `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.page).toBe(999);
+    expect(res.body.total).toBe(1);
+    expect(res.body.total_pages).toBe(1);
   });
 });
 
