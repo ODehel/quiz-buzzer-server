@@ -115,8 +115,12 @@ export function createQuizzesCollectionHandler(db, config, authenticate, authori
         const nameFilter = url.searchParams.get("name") || null;
         // CA-15 : Pagination
         const { page, limit } = parsePagination(url);
-        const result = listQuizzes(db, nameFilter, page, limit);
-        sendJson(res, 200, result);
+        const all = listQuizzes(db, nameFilter);
+        const total = all.length;
+        const offset = (page - 1) * limit;
+        const data = all.slice(offset, offset + limit);
+        const total_pages = total === 0 ? 0 : Math.ceil(total / limit);
+        sendJson(res, 200, { data, page, limit, total, total_pages });
         return;
       }
 
