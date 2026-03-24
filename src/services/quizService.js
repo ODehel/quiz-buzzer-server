@@ -142,25 +142,14 @@ export function createQuiz(db, name, questionIds) {
 }
 
 /**
- * Liste tous les quiz avec question_summary et pagination (CA-15 à CA-19).
+ * Liste tous les quiz avec question_summary (CA-15 à CA-19).
  *
  * @param {import("better-sqlite3").Database} db
  * @param {string|null} nameFilter
- * @param {number} page
- * @param {number} limit
- * @returns {Object} Paginated response with data, page, limit, total, total_pages
+ * @returns {Array}
  */
-export function listQuizzes(db, nameFilter, page, limit) {
-  const { data, total } = findAllQuizzes(db, nameFilter || null, page, limit);
-  const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
-
-  return {
-    data,
-    page,
-    limit,
-    total,
-    total_pages: totalPages,
-  };
+export function listQuizzes(db, nameFilter) {
+  return findAllQuizzes(db, nameFilter || null);
 }
 
 /**

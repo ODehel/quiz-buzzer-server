@@ -97,7 +97,7 @@ describe("createQuiz", () => {
   it("CA-4: rejects duplicate name (case-insensitive)", () => {
     createQuiz(db, "Sciences du monde", Q10);
     expect(() => createQuiz(db, "SCIENCES DU MONDE", Q10)).toThrow(
-      expect.objectContaining({ status: 409, error: "CONFLICT" })
+      expect.objectContaining({ status: 409, error: "QUIZ_ALREADY_EXISTS" })
     );
   });
 
