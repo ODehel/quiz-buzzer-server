@@ -60,16 +60,15 @@ const SCHEMA = `
 
   -- T_GAME_GAM: Table pour gérer l'état des parties
   --
-  -- REMARQUE IMPORTANTE — Définition anticipée du CHECK:
-  -- La contrainte CHECK sur GAM_STATUS inclut TOUS les états de la machine à états complète
-  -- (incluant les états MCQ introduits en US-011 et les états SPEED en US-012), même si
-  -- certains ne sont pas utilisés immédiatement. Cela évite une recréation destructive de
-  -- table lors des migrations ultérieures, car SQLite ne supporte pas ALTER COLUMN.
+  -- REMARQUE IMPORTANTE — Initialisation préventive des états dans le CHECK:
+  -- La contrainte CHECK sur GAM_STATUS inclut TOUS les états de la machine à états complète,
+  -- initialisés d'emblée pour éviter deux recréations destructives de table lors des migrations
+  -- ultérieures (ALT ER COLUMN n'est pas supporté par SQLite).
   --
-  -- États inclus:
-  -- - Partie: PENDING, OPEN, COMPLETED, IN_ERROR
-  -- - MCQ (US-011): QUESTION_TITLE, QUESTION_OPEN, QUESTION_CLOSED
-  -- - Bonus: QUESTION_BUZZED (réservé pour extensions futures)
+  -- États initialisés:
+  -- - Partie (US-010): PENDING, OPEN, COMPLETED, IN_ERROR
+  -- - Question MCQ (US-011): QUESTION_TITLE, QUESTION_OPEN, QUESTION_CLOSED, QUESTION_BUZZED
+  -- - États SPEED (US-012): à documenter à la mise en œuvre
   CREATE TABLE IF NOT EXISTS T_GAME_GAM
   (
       GAM_ID                      TEXT PRIMARY KEY,
