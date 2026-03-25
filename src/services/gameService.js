@@ -113,11 +113,12 @@ function toApiFormat(row, participants) {
 
 /**
  * Crée une nouvelle partie (CA-1 à CA-14).
- * Retourne undefined — la réponse HTTP est 201 sans body.
+ * Retourne l'ID de la partie créée.
  *
  * @param {import("better-sqlite3").Database} db
  * @param {unknown} quizId
  * @param {unknown} participants
+ * @returns {string} ID de la partie créée
  */
 export function createGame(db, quizId, participants) {
   // CA-5 : quiz_id doit être un UUID valide
