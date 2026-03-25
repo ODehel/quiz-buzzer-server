@@ -7,6 +7,7 @@ import {
   deleteQuizById,
   normalizeName,
   validateUuid,
+  getQuizById,
 } from "../src/services/quizService.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -297,6 +298,50 @@ describe("deleteQuizById", () => {
   // CA-34 : ID mal formé
   it("CA-34: throws INVALID_UUID for malformed ID", () => {
     expect(() => deleteQuizById(db, "not-a-uuid")).toThrow(
+      expect.objectContaining({ status: 400, error: "INVALID_UUID" })
+    );
+  });
+});
+
+describe("getQuizById", () => {
+  let db;
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => db.close());
+
+  // CA-24 : Récupération avec toutes les questions
+  it("CA-24: retrieves quiz with all question_ids in order", () => {
+    const created = createQuiz(db, "Mon quiz", Q10);
+    const quiz = getQuizById(db, created.id);
+
+    expect(quiz.id).toBe(created.id);
+    expect(quiz.name).toBe("Mon quiz");
+    expect(quiz.question_ids).toEqual(Q10);
+    expect(quiz.created_at).toBe(created.created_at);
+    expect(quiz.last_updated_at).toBeNull();
+  });
+
+  // CA-24 : Préserve l'ordre des questions
+  it("CA-24: preserves question order", () => {
+    const created = createQuiz(db, "Mon quiz", Q10);
+    const reversed = [...Q10].reverse();
+    updateQuizById(db, created.id, "Mon quiz", reversed);
+
+    const quiz = getQuizById(db, created.id);
+    expect(quiz.question_ids).toEqual(reversed);
+  });
+
+  // CA-25 : ID inexistant
+  it("CA-25: throws NOT_FOUND for unknown quiz ID", () => {
+    expect(() =>
+      getQuizById(db, "018e4f5a-8c3b-7d2e-9f1a-000000000099")
+    ).toThrow(
+      expect.objectContaining({ status: 404, error: "NOT_FOUND" })
+    );
+  });
+
+  // CA-26 : ID mal formé
+  it("CA-26: throws INVALID_UUID for malformed quiz ID", () => {
+    expect(() => getQuizById(db, "not-a-uuid")).toThrow(
       expect.objectContaining({ status: 400, error: "INVALID_UUID" })
     );
   });

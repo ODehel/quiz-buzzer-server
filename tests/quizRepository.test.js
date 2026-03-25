@@ -10,6 +10,7 @@ import {
   deleteQuizQuestions,
   deleteQuiz,
   countQuizzesByQuestion,
+  findQuizWithQuestionsById,
 } from "../src/repositories/quizRepository.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -217,6 +218,37 @@ describe("quizRepository", () => {
 
     it("returns 0 when quiz not found", () => {
       expect(deleteQuiz(db, "inexistant")).toBe(0);
+    });
+  });
+
+  // ── findQuizWithQuestionsById ──────────────────────────────────────────────
+
+  describe("findQuizWithQuestionsById", () => {
+    it("returns quiz with question_ids when found", () => {
+      insertQuiz(db, { id: "quz-1", name: "Mon quiz", createdAt: NOW });
+      insertQuizQuestions(db, "quz-1", Q_IDS);
+
+      const result = findQuizWithQuestionsById(db, "quz-1");
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe("quz-1");
+      expect(result.name).toBe("Mon quiz");
+      expect(result.question_ids).toEqual(Q_IDS);
+      expect(result.created_at).toBe(NOW);
+      expect(result.last_updated_at).toBeNull();
+    });
+
+    it("returns undefined when quiz not found", () => {
+      expect(findQuizWithQuestionsById(db, "inexistant")).toBeUndefined();
+    });
+
+    it("preserves question order", () => {
+      insertQuiz(db, { id: "quz-1", name: "Mon quiz", createdAt: NOW });
+      const reversed = [...Q_IDS].reverse();
+      insertQuizQuestions(db, "quz-1", reversed);
+
+      const result = findQuizWithQuestionsById(db, "quz-1");
+      expect(result.question_ids).toEqual(reversed);
     });
   });
 

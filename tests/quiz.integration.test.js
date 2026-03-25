@@ -321,6 +321,83 @@ describe("GET /api/v1/quizzes", () => {
   });
 });
 
+// ─── GET /api/v1/quizzes/:id ──────────────────────────────────────────────────
+
+describe("GET /api/v1/quizzes/:id", () => {
+  it("CA-24: retrieves quiz with all question_ids in order", async () => {
+    const created = (await createValidQuiz("Culture générale", 10)).body;
+    const res = await request(server)
+      .get(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.id).toBe(created.id);
+    expect(res.body.name).toBe("Culture générale");
+    expect(res.body.question_ids).toBeDefined();
+    expect(Array.isArray(res.body.question_ids)).toBe(true);
+    expect(res.body.question_ids).toHaveLength(10);
+    expect(res.body.created_at).toBeDefined();
+    expect(res.body.last_updated_at).toBeNull();
+  });
+
+  it("CA-24: preserves question order from creation", async () => {
+    const created = (await createValidQuiz("Test quiz")).body;
+    const res = await request(server)
+      .get(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.question_ids).toEqual(makeQ(10));
+  });
+
+  it("CA-25: returns 404 for non-existent quiz", async () => {
+    const res = await request(server)
+      .get("/api/v1/quizzes/018e4f5a-0000-0000-0000-000000000000")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("NOT_FOUND");
+  });
+
+  it("CA-26: returns 400 for malformed UUID", async () => {
+    const res = await request(server)
+      .get("/api/v1/quizzes/not-a-uuid")
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("INVALID_UUID");
+  });
+
+  it("CA-38: returns 401 without token", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .get(`/api/v1/quizzes/${created.id}`);
+
+    expect(res.status).toBe(401);
+  });
+
+  it("CA-39: returns 403 for buzzer role", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .get(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${buzzerToken}`);
+
+    expect(res.status).toBe(403);
+  });
+
+  it("CA-41: returns 405 for PATCH on resource", async () => {
+    const created = (await createValidQuiz()).body;
+    const res = await request(server)
+      .patch(`/api/v1/quizzes/${created.id}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(405);
+    expect(res.headers["allow"]).toContain("GET");
+    expect(res.headers["allow"]).toContain("PUT");
+    expect(res.headers["allow"]).toContain("DELETE");
+  });
+});
+
 // ─── PUT /api/v1/quizzes/:id ─────────────────────────────────────────────────
 
 describe("PUT /api/v1/quizzes/:id", () => {
@@ -383,12 +460,13 @@ describe("PUT /api/v1/quizzes/:id", () => {
     expect(res.body.error).toBe("INVALID_UUID");
   });
 
-  it("CA-41: returns 405 for GET on resource", async () => {
+  it("CA-41: returns 405 for PATCH on resource", async () => {
     const created = (await createValidQuiz()).body;
     const res = await request(server)
-      .get(`/api/v1/quizzes/${created.id}`)
+      .patch(`/api/v1/quizzes/${created.id}`)
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(405);
+    expect(res.headers["allow"]).toContain("GET");
     expect(res.headers["allow"]).toContain("PUT");
     expect(res.headers["allow"]).toContain("DELETE");
   });
