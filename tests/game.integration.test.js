@@ -105,6 +105,8 @@ describe("POST /api/v1/games", () => {
     );
     expect(res.body.status).toBe("PENDING");
     expect(res.body.quiz_id).toBe("018e4f5c-0000-7000-8000-000000000001");
+    expect(res.body.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(res.body.last_updated_at).toBeNull();
     expect(res.body.participants).toEqual([
       { order: 1, name: "Alice" },
       { order: 2, name: "Bob" },
@@ -124,6 +126,7 @@ describe("POST /api/v1/games", () => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     );
     expect(res.body.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    expect(res.body.last_updated_at).toBeNull();
   });
 
   it("CA-5: returns 400 INVALID_UUID for malformed quiz_id", async () => {
@@ -410,6 +413,8 @@ describe("PUT /api/v1/games/:id", () => {
       { order: 1, name: "Alice" },
       { order: 2, name: "Robert" },
     ]);
+    // Verify last_updated_at is set after PUT
+    expect(res.body.last_updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
   it("CA-23 + CA-25: transitions PENDING -> OPEN and returns 200", async () => {
@@ -420,6 +425,8 @@ describe("PUT /api/v1/games/:id", () => {
       .send({ status: "OPEN", participants: ["Alice", "Bob", "Charlie"] });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("OPEN");
+    // Verify last_updated_at is set after PUT
+    expect(res.body.last_updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
   it("CA-24: returns 400 IMMUTABLE_FIELD when quiz_id differs", async () => {
@@ -614,6 +621,8 @@ describe("PATCH /api/v1/games/:id", () => {
     expect(res.body.status).toBe("OPEN");
     // Participants unchanged
     expect(res.body.participants.length).toBe(3);
+    // Verify last_updated_at is set after PATCH
+    expect(res.body.last_updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
   it("CA-37: renames a single participant and returns 200", async () => {
@@ -628,6 +637,8 @@ describe("PATCH /api/v1/games/:id", () => {
       { order: 2, name: "Robert" },
       { order: 3, name: "Charlie" },
     ]);
+    // Verify last_updated_at is set after PATCH
+    expect(res.body.last_updated_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
   it("CA-38: returns 404 PARTICIPANT_NOT_FOUND for non-existent order", async () => {
