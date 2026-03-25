@@ -312,11 +312,13 @@ describe("gameOrchestrator — SPEED workflow", () => {
 
       // Winner
       const charlie = results.find(m => m.target === "buzzer-3");
+      expect(charlie.correct_answer).toBe("Answer");
       expect(charlie.correct).toBe(true);
       expect(charlie.points_earned).toBe(20);
 
       // Losers
       const alice = results.find(m => m.target === "buzzer-1");
+      expect(alice.correct_answer).toBe("Answer");
       expect(alice.correct).toBe(false);
       expect(alice.points_earned).toBe(0);
     });
