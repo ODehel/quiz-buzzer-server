@@ -8,6 +8,7 @@ import {
   listQuizzes,
   updateQuizById,
   deleteQuizById,
+  getQuizById,
 } from "../services/quizService.js";
 
 /** Champs autorisés selon la méthode */
@@ -139,7 +140,7 @@ export function createQuizzesCollectionHandler(db, config, authenticate, authori
 }
 
 /**
- * Crée le handler de la ressource PUT /api/v1/quizzes/:id et DELETE /api/v1/quizzes/:id.
+ * Crée le handler de la ressource GET /api/v1/quizzes/:id, PUT /api/v1/quizzes/:id et DELETE /api/v1/quizzes/:id.
  *
  * @param {import("better-sqlite3").Database} db
  * @param {{ jwtSecret: string }} config
@@ -163,12 +164,12 @@ export function createQuizResourceHandler(db, config, authenticate, authorize, r
       }
 
       // CA-41 : Méthode supportée
-      if (req.method !== "PUT" && req.method !== "DELETE") {
+      if (req.method !== "GET" && req.method !== "PUT" && req.method !== "DELETE") {
         sendJson(res, 405, {
           status: 405,
           error: "METHOD_NOT_ALLOWED",
           message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "PUT, DELETE" });
+        }, { Allow: "GET, PUT, DELETE" });
         return;
       }
 
@@ -180,6 +181,12 @@ export function createQuizResourceHandler(db, config, authenticate, authorize, r
       // Extraction de l'ID depuis l'URL
       const match = url.pathname.match(/^\/api\/v1\/quizzes\/([^/]+)$/);
       const id = match[1];
+
+      if (req.method === "GET") {
+        const quiz = getQuizById(db, id);
+        sendJson(res, 200, quiz);
+        return;
+      }
 
       if (req.method === "DELETE") {
         // CA-35 : body ignoré silencieusement
