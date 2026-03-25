@@ -120,12 +120,10 @@ describe("GET /api/v1/games/:id/results", () => {
     expect(res.body.quiz_id).toBe(QUIZ_ID);
     expect(res.body.status).toBe("COMPLETED");
 
-    // Ranking: Alice 10pts, Bob 10pts — both tied
+    // Ranking: both 10pts, but Bob faster (7100ms vs 7200ms) → Bob rank 1
     expect(res.body.ranking).toHaveLength(2);
-    expect(res.body.ranking[0].rank).toBe(1);
-    expect(res.body.ranking[0].score).toBe(10);
-    expect(res.body.ranking[1].rank).toBe(2);
-    expect(res.body.ranking[1].score).toBe(10);
+    expect(res.body.ranking[0]).toMatchObject({ rank: 1, name: "Bob", score: 10, total_time_ms: 7100 });
+    expect(res.body.ranking[1]).toMatchObject({ rank: 2, name: "Alice", score: 10, total_time_ms: 7200 });
 
     // Questions
     expect(res.body.questions).toHaveLength(2);
@@ -211,6 +209,47 @@ describe("GET /api/v1/games/:id/results", () => {
     expect(res.status).toBe(405);
     expect(res.body.error).toBe("METHOD_NOT_ALLOWED");
     expect(res.headers.allow).toBe("GET");
+  });
+
+  it("ranks by score first, then by total time ascending for tiebreakers", async () => {
+    // Setup: 3 participants
+    // Alice: 20pts, 8000ms total
+    // Bob:   10pts, 3000ms total (fewer points but very fast)
+    // Charlie: 20pts, 6000ms total (same score as Alice but faster)
+    db.prepare(
+      `INSERT INTO T_THEME_THM (THM_ID, THM_NAME, THM_CREATED_AT) VALUES (?, ?, ?)`
+    ).run("thm-1", "Science", "2026-03-13T09:00:00.000Z");
+    db.prepare(
+      `INSERT INTO T_QUESTION_QST (QST_ID, QST_TITLE, QST_TYPE, QST_THEME_ID, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CORRECT_ANSWER, QST_CHOICE_A, QST_CHOICE_B, QST_CHOICE_C, QST_CHOICE_D, QST_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(QUESTION_ID_1, "Q1", "MCQ", "thm-1", 1, 30, 10, "A", "A", "B", "C", "D", "2026-03-13T09:00:00.000Z");
+    db.prepare(
+      `INSERT INTO T_QUIZ_QUZ (QUZ_ID, QUZ_NAME, QUZ_CREATED_AT) VALUES (?, ?, ?)`
+    ).run(QUIZ_ID, "Quiz", "2026-03-13T10:00:00.000Z");
+    db.prepare(
+      `INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT) VALUES (?, ?, 'COMPLETED', ?)`
+    ).run(GAME_ID, QUIZ_ID, "2026-03-13T10:00:00.000Z");
+    db.prepare(`INSERT INTO T_GAME_PARTICIPANT_GPA (GPA_GAME_ID, GPA_NAME, GPA_ORDER) VALUES (?, ?, ?)`).run(GAME_ID, "Alice", 1);
+    db.prepare(`INSERT INTO T_GAME_PARTICIPANT_GPA (GPA_GAME_ID, GPA_NAME, GPA_ORDER) VALUES (?, ?, ?)`).run(GAME_ID, "Bob", 2);
+    db.prepare(`INSERT INTO T_GAME_PARTICIPANT_GPA (GPA_GAME_ID, GPA_NAME, GPA_ORDER) VALUES (?, ?, ?)`).run(GAME_ID, "Charlie", 3);
+
+    const insertAnswer = db.prepare(
+      `INSERT INTO T_GAME_ANSWER_GAA (GAA_ID, GAA_GAME_ID, GAA_QUESTION_ID, GAA_PARTICIPANT_ORDER, GAA_ANSWER, GAA_TIME_MS, GAA_POINTS_EARNED, GAA_CUMULATIVE_SCORE, GAA_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    insertAnswer.run("a1", GAME_ID, QUESTION_ID_1, 1, "A", 8000, 20, 20, "2026-03-13T10:01:00.000Z");
+    insertAnswer.run("a2", GAME_ID, QUESTION_ID_1, 2, "B", 3000, 10, 10, "2026-03-13T10:01:01.000Z");
+    insertAnswer.run("a3", GAME_ID, QUESTION_ID_1, 3, "A", 6000, 20, 20, "2026-03-13T10:01:02.000Z");
+
+    const res = await request(server)
+      .get(`/api/v1/games/${GAME_ID}/results`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    // Charlie (20pts, 6000ms) beats Alice (20pts, 8000ms) on time; Bob (10pts) is last
+    expect(res.body.ranking[0]).toMatchObject({ rank: 1, name: "Charlie", score: 20, total_time_ms: 6000 });
+    expect(res.body.ranking[1]).toMatchObject({ rank: 2, name: "Alice", score: 20, total_time_ms: 8000 });
+    expect(res.body.ranking[2]).toMatchObject({ rank: 3, name: "Bob", score: 10, total_time_ms: 3000 });
   });
 
   it("returns 200 with empty ranking when game has no answers", async () => {

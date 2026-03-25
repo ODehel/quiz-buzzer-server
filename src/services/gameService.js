@@ -384,20 +384,23 @@ export function getGameResults(db, id) {
   const participants = findParticipantsByGameId(db, id);
   const answers = findAnswersByGame(db, id);
 
-  // Build per-participant final scores from the last answer's cumulative score
+  // Build per-participant final scores and cumulative time
   const scoreMap = new Map();
+  const timeMap = new Map();
   for (const a of answers) {
     scoreMap.set(a.GAA_PARTICIPANT_ORDER, a.GAA_CUMULATIVE_SCORE);
+    timeMap.set(a.GAA_PARTICIPANT_ORDER, (timeMap.get(a.GAA_PARTICIPANT_ORDER) ?? 0) + a.GAA_TIME_MS);
   }
 
-  // Build ranking sorted by score descending
+  // Build ranking sorted by score descending, then by total time ascending
   const ranking = participants
     .map((p) => ({
       order: p.GPA_ORDER,
       name: p.GPA_NAME,
       score: scoreMap.get(p.GPA_ORDER) ?? 0,
+      total_time_ms: timeMap.get(p.GPA_ORDER) ?? 0,
     }))
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => b.score - a.score || a.total_time_ms - b.total_time_ms)
     .map((entry, index) => ({ rank: index + 1, ...entry }));
 
   // Build per-question details
