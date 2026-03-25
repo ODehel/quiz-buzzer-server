@@ -142,6 +142,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     // Create speed processor
     currentSpeedProcessor = createSpeedProcessor({
       questionId: question.QST_ID,
+      correctAnswer: question.QST_CORRECT_ANSWER,
       points: question.QST_POINTS,
       timeLimitMs: question.QST_TIME_LIMIT * 1000,
       participantOrders: orders,
@@ -234,6 +235,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     for (const r of results) {
       sender.sendToBuzzer(r.participantOrder, {
         type: "question_result",
+        correct_answer: r.correctAnswer,
         correct: r.correct,
         points_earned: r.pointsEarned,
         cumulative_score: r.cumulativeScore,
@@ -489,6 +491,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     for (const r of results) {
       sender.sendToBuzzer(r.participantOrder, {
         type: "question_result",
+        correct_answer: r.correctAnswer,
         correct: r.correct,
         points_earned: r.pointsEarned,
         cumulative_score: r.cumulativeScore,

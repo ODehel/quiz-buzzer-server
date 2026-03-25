@@ -15,6 +15,7 @@
  *
  * @param {Object} options
  * @param {string} options.questionId
+ * @param {string} options.correctAnswer - Bonne réponse à la question SPEED
  * @param {number} options.points - Points attribués au gagnant
  * @param {number} options.timeLimitMs - Durée totale en millisecondes
  * @param {number[]} options.participantOrders - Ordres des participants (1-based)
@@ -22,6 +23,7 @@
  */
 export function createSpeedProcessor({
   questionId,
+  correctAnswer,
   points,
   timeLimitMs,
   participantOrders,
@@ -157,7 +159,7 @@ export function createSpeedProcessor({
   /**
    * Computes individual results for each buzzer participant (CA-30).
    *
-   * @returns {Array<{ participantOrder: number, correct: boolean, pointsEarned: number, cumulativeScore: number }>}
+   * @returns {Array<{ participantOrder: number, correctAnswer: string, correct: boolean, pointsEarned: number, cumulativeScore: number }>}
    */
   function getResults() {
     return participantOrders
@@ -169,6 +171,7 @@ export function createSpeedProcessor({
         if (winner && winner.participantOrder === order) {
           return {
             participantOrder: order,
+            correctAnswer,
             correct: true,
             pointsEarned: winner.pointsEarned,
             cumulativeScore: winner.cumulativeScore,
@@ -177,6 +180,7 @@ export function createSpeedProcessor({
 
         return {
           participantOrder: order,
+          correctAnswer,
           correct: false,
           pointsEarned: 0,
           cumulativeScore: previousScore,
