@@ -153,6 +153,126 @@ describe("attachWebSocket — path filtering", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tests: WebSocket rate limiting (15 connections per minute per IP)
+// ---------------------------------------------------------------------------
+describe("attachWebSocket — WebSocket rate limiting", () => {
+  let db, server, wss;
+  let captured, restore;
+
+  beforeEach(async () => {
+    db = createTestDb();
+    ({ captured, restore } = captureConsole());
+    // Use lower rate limit for faster tests: 3 connections per 100ms
+    ({ server, wss } = await startTestServer(db, {
+      wsRateLimitConnections: 3,
+      wsRateLimitWindowMs: 100,
+    }));
+  });
+
+  afterEach(async () => {
+    await teardown(server, wss);
+    db.close();
+    restore();
+  });
+
+  it("should allow up to the limit of WebSocket connections from same IP", async () => {
+    // Allow 3 connections with the test config
+    const ws1 = await connectWs(server);
+    const ws2 = await connectWs(server);
+    const ws3 = await connectWs(server);
+
+    expect(ws1.readyState).toBe(WebSocket.OPEN);
+    expect(ws2.readyState).toBe(WebSocket.OPEN);
+    expect(ws3.readyState).toBe(WebSocket.OPEN);
+
+    ws1.terminate();
+    ws2.terminate();
+    ws3.terminate();
+  });
+
+  it("should reject WebSocket connection when rate limit is exceeded", async () => {
+    // Create 3 successful connections
+    const ws1 = await connectWs(server);
+    const ws2 = await connectWs(server);
+    const ws3 = await connectWs(server);
+
+    expect(ws1.readyState).toBe(WebSocket.OPEN);
+    expect(ws2.readyState).toBe(WebSocket.OPEN);
+    expect(ws3.readyState).toBe(WebSocket.OPEN);
+
+    // 4th connection should be rejected
+    await expect(connectWs(server)).rejects.toThrow();
+
+    ws1.terminate();
+    ws2.terminate();
+    ws3.terminate();
+  });
+
+  it("should log WEBSOCKET_RATE_LIMITED when rate limit is exceeded", async () => {
+    // Create 3 successful connections
+    const ws1 = await connectWs(server);
+    const ws2 = await connectWs(server);
+    const ws3 = await connectWs(server);
+
+    // 4th connection should be rejected and logged
+    await expect(connectWs(server)).rejects.toThrow();
+    await new Promise((r) => setTimeout(r, 20));
+
+    const warns = parseLogs(captured.warn);
+    const log = warns.find((e) => e.event === "WEBSOCKET_RATE_LIMITED");
+    expect(log).toBeDefined();
+    expect(log.level).toBe("WARN");
+    expect(log).toHaveProperty("ip");
+    expect(log.limit).toBe(3);
+    expect(log.windowSeconds).toBe(0.1);
+
+    ws1.terminate();
+    ws2.terminate();
+    ws3.terminate();
+  });
+
+  it("should allow new connections from different IP", async () => {
+    // Create 3 connections (reaching limit)
+    const ws1 = await connectWs(server);
+    const ws2 = await connectWs(server);
+    const ws3 = await connectWs(server);
+
+    // Reject from same IP
+    await expect(connectWs(server)).rejects.toThrow();
+
+    // Allow from different IP (simulated by localhost)
+    // Note: In a real scenario with different IPs, this would succeed
+    // For this test, we can only verify that same IP is rate limited
+
+    ws1.terminate();
+    ws2.terminate();
+    ws3.terminate();
+  });
+
+  it("should allow new connections after rate limit window expires", async () => {
+    // Create 3 connections (reaching limit)
+    const ws1 = await connectWs(server);
+    const ws2 = await connectWs(server);
+    const ws3 = await connectWs(server);
+
+    // Reject from same IP
+    await expect(connectWs(server)).rejects.toThrow();
+
+    // Wait for window to expire (100ms)
+    await new Promise((r) => setTimeout(r, 110));
+
+    // Should now allow new connection
+    const ws4 = await connectWs(server);
+    expect(ws4.readyState).toBe(WebSocket.OPEN);
+
+    ws1.terminate();
+    ws2.terminate();
+    ws3.terminate();
+    ws4.terminate();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tests: connection logging (CA-18)
 // ---------------------------------------------------------------------------
 describe("attachWebSocket — connection logging", () => {

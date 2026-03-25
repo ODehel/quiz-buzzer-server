@@ -5,9 +5,12 @@ import { logInfo, logWarn, logError } from "../utils/logger.js";
 import { createGameOrchestrator } from "../game/gameOrchestrator.js";
 import { findActiveGame } from "../repositories/gameanswerRepository.js";
 import { findParticipantsByGameId } from "../repositories/gameRepository.js";
+import { RateLimiter } from "../middlewares/rateLimiter.js";
 
 export const MAX_BUZZERS = 10;
 export const AUTH_TIMEOUT_MS = 60_000;
+export const WS_RATE_LIMIT_CONNECTIONS = 15;
+export const WS_RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 
 export const WS_CLOSE_INVALID_TOKEN = 4001;
 export const WS_CLOSE_TOKEN_EXPIRED = 4002;
@@ -31,17 +34,24 @@ const BUZZER_MESSAGE_TYPES = new Set(["answer", "buzz"]);
  * @param {string} jwtSecret
  * @param {Object} [opts]
  * @param {number} [opts.authTimeoutMs] - Auth timeout in ms (injectable for tests)
+ * @param {number} [opts.wsRateLimitConnections] - Max WebSocket connections per window (injectable for tests)
+ * @param {number} [opts.wsRateLimitWindowMs] - Rate limit window in ms (injectable for tests)
  * @param {Object} [opts.orchestratorOptions] - Options forwarded to createGameOrchestrator (injectable for tests)
  * @returns {WebSocketServer}
  */
 export function attachWebSocket(httpServer, db, jwtSecret, {
   authTimeoutMs = AUTH_TIMEOUT_MS,
+  wsRateLimitConnections = WS_RATE_LIMIT_CONNECTIONS,
+  wsRateLimitWindowMs = WS_RATE_LIMIT_WINDOW_MS,
   orchestratorOptions = {},
 } = {}) {
   const wss = new WebSocketServer({ noServer: true });
 
   // registry: Map<sub, { ws, role, username, connectedAt }>
   const registry = new Map();
+
+  // Rate limiter for WebSocket connection attempts (per IP)
+  const wsRateLimiter = new RateLimiter(wsRateLimitConnections, wsRateLimitWindowMs);
 
   // ── Sender helpers for the orchestrator ──────────────────────────────────
 
@@ -269,6 +279,16 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       socket.destroy();
       return;
     }
+
+    // Rate limit WebSocket connection attempts per IP
+    const ip = req.socket.remoteAddress || "unknown";
+    const rateLimitCheck = wsRateLimiter.check(ip);
+    if (!rateLimitCheck.allowed) {
+      logWarn("WEBSOCKET_RATE_LIMITED", { ip, limit: wsRateLimitConnections, windowSeconds: wsRateLimitWindowMs / 1000 });
+      socket.destroy();
+      return;
+    }
+
     wss.handleUpgrade(req, socket, head, (ws) => {
       wss.emit("connection", ws, req);
     });
