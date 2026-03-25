@@ -130,6 +130,16 @@ describe("GET /api/v1/games/:id/results", () => {
     expect(res.body.questions[0].question_id).toBe(QUESTION_ID_1);
     expect(res.body.questions[0].answers).toHaveLength(2);
     expect(res.body.questions[1].question_id).toBe(QUESTION_ID_2);
+
+    // CA-6: each answer contains all required fields
+    const firstAnswer = res.body.questions[0].answers[0];
+    expect(firstAnswer).toMatchObject({
+      participant_order: 1,
+      answer: "A",
+      time_ms: 3200,
+      points_earned: 10,
+      cumulative_score: 10,
+    });
   });
 
   it("returns 409 GAME_NOT_COMPLETED for a PENDING game", async () => {
@@ -250,6 +260,60 @@ describe("GET /api/v1/games/:id/results", () => {
     expect(res.body.ranking[0]).toMatchObject({ rank: 1, name: "Charlie", score: 20, total_time_ms: 6000 });
     expect(res.body.ranking[1]).toMatchObject({ rank: 2, name: "Alice", score: 20, total_time_ms: 8000 });
     expect(res.body.ranking[2]).toMatchObject({ rank: 3, name: "Bob", score: 10, total_time_ms: 3000 });
+  });
+
+  it("returns 429 RATE_LIMIT_EXCEEDED when rate limit is exceeded", async () => {
+    // Close default server and create one with a very low rate limit
+    await new Promise((resolve) => server.close(resolve));
+
+    const authenticate = createAuthenticateMiddleware(JWT_SECRET);
+    const authorize = createAuthorizeMiddleware("admin");
+    const tightLimiter = new RateLimiter(1, 60_000);
+
+    const resultsHandler = createGameResultsHandler(
+      db, config, authenticate, authorize, tightLimiter
+    );
+
+    server = createServer((req, res) => {
+      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      if (url.pathname.match(/^\/api\/v1\/games\/[^/]+\/results$/)) {
+        resultsHandler(req, res, url);
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    await new Promise((resolve) => server.listen(0, resolve));
+
+    // First request consumes the single allowed request
+    await request(server)
+      .get(`/api/v1/games/${GAME_ID}/results`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    // Second request should be rate limited
+    const res = await request(server)
+      .get(`/api/v1/games/${GAME_ID}/results`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(429);
+    expect(res.body.error).toBe("RATE_LIMIT_EXCEEDED");
+    expect(res.headers["retry-after"]).toBeDefined();
+  });
+
+  it("returns 500 INTERNAL_SERVER_ERROR on unexpected error", async () => {
+    // Close the DB to trigger an unexpected error
+    db.close();
+
+    const res = await request(server)
+      .get(`/api/v1/games/${GAME_ID}/results`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe("INTERNAL_SERVER_ERROR");
+    expect(res.body.message).toBe("An unexpected error occurred. Please try again later.");
+
+    // Reopen DB so afterEach cleanup doesn't fail
+    db = openDatabase(":memory:");
   });
 
   it("returns 200 with empty ranking when game has no answers", async () => {
