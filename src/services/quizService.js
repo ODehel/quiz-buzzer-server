@@ -258,6 +258,18 @@ export function deleteQuizById(db, id) {
     throw new AppError(404, "NOT_FOUND", "The requested quiz was not found.");
   }
 
+  // CA-31/CA-32 : Garde QUIZ_IN_USE — vérifier qu'aucune partie active ne référence ce quiz
+  // Cette garde est définie en US-008 CA-31 mais activée (implémentée) en US-010
+  // Une partie est active si son statut est 'PENDING' ou 'OPEN'
+  // ⚠️ À implémenter en US-010 une fois que T_GAME_GAM existe :
+  // const activeGame = db.prepare(`
+  //   SELECT COUNT(*) as count FROM T_GAME_GAM
+  //   WHERE GAM_QUIZ_ID = ? AND GAM_STATUS IN ('PENDING', 'OPEN')
+  // `).get(id);
+  // if (activeGame.count > 0) {
+  //   throw new AppError(403, 'QUIZ_IN_USE', 'Cannot delete this quiz: it is referenced by an active game.');
+  // }
+
   // CA-30 : suppression en cascade (quiz + liaisons) dans une transaction
   const del = db.transaction(() => {
     deleteQuizQuestions(db, id);
