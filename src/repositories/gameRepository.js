@@ -38,12 +38,12 @@ export function insertParticipants(db, gameId, names) {
  *
  * @param {import("better-sqlite3").Database} db
  * @param {string} id
- * @returns {{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT } | undefined}
+ * @returns {{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT, GAM_LAST_UPDATED_AT } | undefined}
  */
 export function findGameById(db, id) {
   return db
     .prepare(
-      `SELECT GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT
+      `SELECT GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT, GAM_LAST_UPDATED_AT
        FROM T_GAME_GAM WHERE GAM_ID = ?`
     )
     .get(id);
@@ -69,12 +69,12 @@ export function findParticipantsByGameId(db, gameId) {
  * Retourne toutes les parties, triées par date de création décroissante.
  *
  * @param {import("better-sqlite3").Database} db
- * @returns {Array<{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT }>}
+ * @returns {Array<{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT, GAM_LAST_UPDATED_AT }>}
  */
 export function findAllGames(db) {
   return db
     .prepare(
-      `SELECT GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT
+      `SELECT GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT, GAM_LAST_UPDATED_AT
        FROM T_GAME_GAM ORDER BY GAM_CREATED_AT DESC`
     )
     .all();
@@ -104,6 +104,17 @@ export function countActiveGames(db) {
  */
 export function updateGameStatus(db, id, status) {
   db.prepare(`UPDATE T_GAME_GAM SET GAM_STATUS = ? WHERE GAM_ID = ?`).run(status, id);
+}
+
+/**
+ * Met à jour l'horodatage de modification d'une partie.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ * @param {string} lastUpdatedAt
+ */
+export function updateGameLastUpdated(db, id, lastUpdatedAt) {
+  db.prepare(`UPDATE T_GAME_GAM SET GAM_LAST_UPDATED_AT = ? WHERE GAM_ID = ?`).run(lastUpdatedAt, id);
 }
 
 /**

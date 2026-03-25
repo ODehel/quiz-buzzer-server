@@ -8,6 +8,7 @@ import {
   findAllGames,
   countActiveGames,
   updateGameStatus,
+  updateGameLastUpdated,
   deleteParticipantsByGameId,
   deleteGameById,
   findParticipantByOrder,
@@ -98,7 +99,7 @@ function validateStatusTransition(currentStatus, newStatus) {
 /**
  * Mappe une ligne DB et ses participants vers le format JSON API.
  *
- * @param {{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT }} row
+ * @param {{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT, GAM_LAST_UPDATED_AT }} row
  * @param {Array<{ GPA_ORDER: number, GPA_NAME: string }>} participants
  * @returns {Object}
  */
@@ -108,6 +109,7 @@ function toApiFormat(row, participants) {
     quiz_id: row.GAM_QUIZ_ID,
     status: row.GAM_STATUS,
     created_at: row.GAM_CREATED_AT,
+    last_updated_at: row.GAM_LAST_UPDATED_AT ?? null,
     participants: participants.map((p) => ({ order: p.GPA_ORDER, name: p.GPA_NAME })),
   };
 }
@@ -218,6 +220,7 @@ export function updateGame(db, id, { status, participants, quizId: bodyQuizId })
   }
 
   // Mise à jour atomique
+  const now = new Date().toISOString();
   db.transaction(() => {
     if (status !== undefined) {
       updateGameStatus(db, id, status);
@@ -225,6 +228,10 @@ export function updateGame(db, id, { status, participants, quizId: bodyQuizId })
     if (participants !== undefined) {
       deleteParticipantsByGameId(db, id);
       insertParticipants(db, id, participants.map((n) => n.trim()));
+    }
+    // Mettre à jour le timestamp de modification si des changements ont été faits
+    if (status !== undefined || participants !== undefined) {
+      updateGameLastUpdated(db, id, now);
     }
   })();
 
@@ -325,6 +332,7 @@ export function patchGame(db, id, { status, participants, quizId: bodyQuizId }) 
   }
 
   // Mise à jour atomique
+  const now = new Date().toISOString();
   db.transaction(() => {
     if (status !== undefined) {
       updateGameStatus(db, id, status);
@@ -333,6 +341,10 @@ export function patchGame(db, id, { status, participants, quizId: bodyQuizId }) 
       for (const patch of participants) {
         updateParticipantName(db, id, patch.order, patch.name.trim());
       }
+    }
+    // Mettre à jour le timestamp de modification si des changements ont été faits
+    if (status !== undefined || participants !== undefined) {
+      updateGameLastUpdated(db, id, now);
     }
   })();
 
