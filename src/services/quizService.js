@@ -10,6 +10,7 @@ import {
   updateQuiz,
   deleteQuizQuestions,
   deleteQuiz,
+  findQuizWithQuestionsById,
 } from "../repositories/quizRepository.js";
 import { findQuestionById } from "../repositories/questionRepository.js";
 
@@ -150,6 +151,27 @@ export function createQuiz(db, name, questionIds) {
  */
 export function listQuizzes(db, nameFilter) {
   return findAllQuizzes(db, nameFilter || null);
+}
+
+/**
+ * Récupère un quiz par son ID avec la liste complète de ses questions ordonnées.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id - ID du quiz
+ * @returns {Object} Quiz avec tous ses détails et ses question_ids
+ * @throws {AppError} 400 INVALID_UUID | 404 NOT_FOUND
+ */
+export function getQuizById(db, id) {
+  // Valider l'UUID
+  validateUuid(id);
+
+  // Récupérer le quiz avec ses questions
+  const quiz = findQuizWithQuestionsById(db, id);
+  if (!quiz) {
+    throw new AppError(404, "NOT_FOUND", "The requested quiz was not found.");
+  }
+
+  return quiz;
 }
 
 /**

@@ -186,6 +186,30 @@ export function deleteQuiz(db, id) {
 }
 
 /**
+ * Retourne un quiz avec tous ses détails et ses questions ordonnées (pour GET /api/v1/quizzes/:id).
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ * @returns {{ id, name, question_ids: string[], created_at, last_updated_at } | undefined}
+ */
+export function findQuizWithQuestionsById(db, id) {
+  const quiz = findQuizById(db, id);
+  if (!quiz) {
+    return undefined;
+  }
+
+  const questionIds = getQuizQuestionIds(db, id);
+
+  return {
+    id: quiz.QUZ_ID,
+    name: quiz.QUZ_NAME,
+    question_ids: questionIds,
+    created_at: quiz.QUZ_CREATED_AT,
+    last_updated_at: quiz.QUZ_LAST_UPDATED_AT ?? null,
+  };
+}
+
+/**
  * Compte le nombre de quiz qui utilisent une question donnée (CA-36).
  *
  * @param {import("better-sqlite3").Database} db
