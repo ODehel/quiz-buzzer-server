@@ -228,6 +228,17 @@ describe("POST /api/v1/games", () => {
     expect(res.body.error).toBe("VALIDATION_ERROR");
   });
 
+  it("CA-9a: returns 400 for duplicate participant names", async () => {
+    const res = await request(server)
+      .post("/api/v1/games")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ quiz_id: QUIZ_ID, participants: ["Alice", "Bob", "Alice"] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("VALIDATION_ERROR");
+    expect(res.body.message).toContain("not unique");
+  });
+
   it("CA-10: participants have 1-based order", async () => {
     await createValidGame(QUIZ_ID, ["Alice", "Bob", "Charlie"]);
     const id = await getCreatedGameId();
@@ -532,6 +543,17 @@ describe("PUT /api/v1/games/:id", () => {
     expect(res.body.error).toBe("VALIDATION_ERROR");
   });
 
+  it("CA-9a: returns 400 for duplicate participant names in PUT", async () => {
+    const res = await request(server)
+      .put(`/api/v1/games/${gameId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ participants: ["Alice", "Bob", "Alice"] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("VALIDATION_ERROR");
+    expect(res.body.message).toContain("not unique");
+  });
+
   it("CA-32: returns 400 UNKNOWN_FIELDS for extra body fields", async () => {
     const res = await request(server)
       .put(`/api/v1/games/${gameId}`)
@@ -647,6 +669,33 @@ describe("PATCH /api/v1/games/:id", () => {
       .send({ participants: [{ order: 1, name: "A".repeat(51) }] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("VALIDATION_ERROR");
+  });
+
+  it("CA-9a: returns 400 for duplicate participant name in PATCH (conflicting with existing)", async () => {
+    const res = await request(server)
+      .patch(`/api/v1/games/${gameId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ participants: [{ order: 1, name: "Bob" }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("VALIDATION_ERROR");
+    expect(res.body.message).toContain("not unique");
+  });
+
+  it("CA-9a: returns 400 for duplicate participant names in PATCH (within patches)", async () => {
+    const res = await request(server)
+      .patch(`/api/v1/games/${gameId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({
+        participants: [
+          { order: 1, name: "NewName" },
+          { order: 2, name: "NewName" },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("VALIDATION_ERROR");
+    expect(res.body.message).toContain("not unique");
   });
 
   it("CA-41: returns 400 IMMUTABLE_FIELD when quiz_id differs in PATCH", async () => {

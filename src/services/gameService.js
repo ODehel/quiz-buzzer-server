@@ -42,7 +42,7 @@ export function validateUuid(id) {
 }
 
 /**
- * Valide un tableau de noms de participants (CA-8, CA-9).
+ * Valide un tableau de noms de participants (CA-8, CA-9, CA-9a).
  *
  * @param {unknown} participants
  * @throws {AppError} 400 VALIDATION_ERROR
@@ -55,6 +55,7 @@ function validateParticipantNames(participants) {
       "participants must be an array of 1 to 10 elements."
     );
   }
+  const names = new Set();
   for (const name of participants) {
     if (typeof name !== "string" || name.trim() === "" || name.length > 50) {
       throw new AppError(
@@ -63,6 +64,15 @@ function validateParticipantNames(participants) {
         "Each participant name must be a non-empty string of at most 50 characters."
       );
     }
+    const trimmedName = name.trim();
+    if (names.has(trimmedName)) {
+      throw new AppError(
+        400,
+        "VALIDATION_ERROR",
+        `Participant name "${trimmedName}" is not unique.`
+      );
+    }
+    names.add(trimmedName);
   }
 }
 
@@ -252,6 +262,7 @@ export function patchGame(db, id, { status, participants, quizId: bodyQuizId }) 
     if (!Array.isArray(participants)) {
       throw new AppError(400, "VALIDATION_ERROR", "participants must be an array.");
     }
+    const newNames = new Set();
     for (const patch of participants) {
       // CA-39 : order doit être un entier entre 1 et 10
       if (
@@ -282,6 +293,31 @@ export function patchGame(db, id, { status, participants, quizId: bodyQuizId }) 
           "PARTICIPANT_NOT_FOUND",
           `No participant found at order ${patch.order} for this game.`
         );
+      }
+      // CA-9a : unicité du nom parmi les patches
+      const trimmedName = patch.name.trim();
+      if (newNames.has(trimmedName)) {
+        throw new AppError(
+          400,
+          "VALIDATION_ERROR",
+          `Participant name "${trimmedName}" is not unique.`
+        );
+      }
+      newNames.add(trimmedName);
+    }
+    // CA-9a : vérifier l'unicité avec les participants existants non modifiés
+    const allParticipants = findParticipantsByGameId(db, id);
+    const patchedOrders = new Set(participants.map((p) => p.order));
+    for (const existing of allParticipants) {
+      if (!patchedOrders.has(existing.GPA_ORDER)) {
+        const existingName = existing.GPA_NAME.trim();
+        if (newNames.has(existingName)) {
+          throw new AppError(
+            400,
+            "VALIDATION_ERROR",
+            `Participant name "${existingName}" is not unique.`
+          );
+        }
       }
     }
   }
