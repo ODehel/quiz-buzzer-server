@@ -10,6 +10,7 @@ import {
   updateGame,
   patchGame,
   deleteGame,
+  getGameResults,
 } from "../services/gameService.js";
 
 /** Champs autorisés selon la méthode */
@@ -236,6 +237,63 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
           quizId: body.quiz_id,
         })
       );
+    } catch (err) {
+      handleError(res, err);
+    }
+  };
+}
+
+/**
+ * Crée le handler GET /api/v1/games/:id/results.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {{ jwtSecret: string }} config
+ * @param {Function} authenticate
+ * @param {Function} authorize
+ * @param {import("../middlewares/rateLimiter.js").RateLimiter} rateLimiter
+ */
+export function createGameResultsHandler(db, config, authenticate, authorize, rateLimiter) {
+  return async (req, res, url) => {
+    try {
+      const ip = req.socket.remoteAddress || "unknown";
+      const rateCheck = rateLimiter.check(ip);
+      if (!rateCheck.allowed) {
+        sendJson(
+          res,
+          429,
+          {
+            status: 429,
+            error: "RATE_LIMIT_EXCEEDED",
+            message: `Too many requests. Please retry in ${rateCheck.retryAfter} seconds.`,
+          },
+          { "Retry-After": String(rateCheck.retryAfter) }
+        );
+        return;
+      }
+
+      if (req.method !== "GET") {
+        sendJson(
+          res,
+          405,
+          {
+            status: 405,
+            error: "METHOD_NOT_ALLOWED",
+            message: `HTTP method ${req.method} is not allowed on this resource.`,
+          },
+          { Allow: "GET" }
+        );
+        return;
+      }
+
+      authenticate(req);
+      authorize(req);
+
+      validateContentType(req, { allowMissing: true });
+
+      const match = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/results$/);
+      const id = match[1];
+
+      sendJson(res, 200, getGameResults(db, id));
     } catch (err) {
       handleError(res, err);
     }

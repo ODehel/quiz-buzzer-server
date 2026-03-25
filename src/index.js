@@ -22,6 +22,7 @@ import {
 import {
   createGamesCollectionHandler,
   createGameResourceHandler,
+  createGameResultsHandler,
 } from "./routes/gameRoute.js";
 
 const config = loadEnv();
@@ -62,6 +63,9 @@ const gamesCollectionHandler = createGamesCollectionHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const gameResourceHandler = createGameResourceHandler(
+  db, config, authenticate, authorize, apiRateLimiter
+);
+const gameResultsHandler = createGameResultsHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 
@@ -124,6 +128,13 @@ function requestHandler(req, res) {
   // Routes parties — collection
   if (url.pathname === "/api/v1/games") {
     gamesCollectionHandler(req, res);
+    return;
+  }
+
+  // Routes parties — résultats (/api/v1/games/:id/results)
+  const gameResultsMatch = url.pathname.match(/^\/api\/v1\/games\/[^/]+\/results$/);
+  if (gameResultsMatch) {
+    gameResultsHandler(req, res, url);
     return;
   }
 

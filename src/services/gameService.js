@@ -13,6 +13,7 @@ import {
   findParticipantByOrder,
   updateParticipantName,
 } from "../repositories/gameRepository.js";
+import { findAnswersByGame } from "../repositories/gameanswerRepository.js";
 import { findQuizById } from "../repositories/quizRepository.js";
 
 /** Regex de validation UUID */
@@ -355,4 +356,78 @@ export function deleteGame(db, id) {
   }
 
   deleteGameById(db, id);
+}
+
+/**
+ * Retourne les résultats finaux d'une partie terminée (COMPLETED).
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {string} id
+ * @returns {Object} Résultats avec classement final
+ */
+export function getGameResults(db, id) {
+  validateUuid(id);
+
+  const row = findGameById(db, id);
+  if (!row) {
+    throw new AppError(404, "NOT_FOUND", "The requested game was not found.");
+  }
+
+  if (row.GAM_STATUS !== "COMPLETED") {
+    throw new AppError(
+      409,
+      "GAME_NOT_COMPLETED",
+      "Results are only available for completed games."
+    );
+  }
+
+  const participants = findParticipantsByGameId(db, id);
+  const answers = findAnswersByGame(db, id);
+
+  // Build per-participant final scores from the last answer's cumulative score
+  const scoreMap = new Map();
+  for (const a of answers) {
+    scoreMap.set(a.GAA_PARTICIPANT_ORDER, a.GAA_CUMULATIVE_SCORE);
+  }
+
+  // Build ranking sorted by score descending
+  const ranking = participants
+    .map((p) => ({
+      order: p.GPA_ORDER,
+      name: p.GPA_NAME,
+      score: scoreMap.get(p.GPA_ORDER) ?? 0,
+    }))
+    .sort((a, b) => b.score - a.score)
+    .map((entry, index) => ({ rank: index + 1, ...entry }));
+
+  // Build per-question details
+  const questionMap = new Map();
+  for (const a of answers) {
+    if (!questionMap.has(a.GAA_QUESTION_ID)) {
+      questionMap.set(a.GAA_QUESTION_ID, []);
+    }
+    questionMap.get(a.GAA_QUESTION_ID).push({
+      participant_order: a.GAA_PARTICIPANT_ORDER,
+      answer: a.GAA_ANSWER,
+      time_ms: a.GAA_TIME_MS,
+      points_earned: a.GAA_POINTS_EARNED,
+      cumulative_score: a.GAA_CUMULATIVE_SCORE,
+    });
+  }
+
+  const questions = [];
+  for (const [questionId, questionAnswers] of questionMap) {
+    questions.push({
+      question_id: questionId,
+      answers: questionAnswers,
+    });
+  }
+
+  return {
+    game_id: row.GAM_ID,
+    quiz_id: row.GAM_QUIZ_ID,
+    status: row.GAM_STATUS,
+    ranking,
+    questions,
+  };
 }
