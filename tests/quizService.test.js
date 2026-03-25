@@ -301,6 +301,136 @@ describe("deleteQuizById", () => {
       expect.objectContaining({ status: 400, error: "INVALID_UUID" })
     );
   });
+
+  // CA-31 : Garde QUIZ_IN_USE — partie active en PENDING
+  it("CA-31: throws QUIZ_IN_USE if quiz is referenced by an active game in PENDING state", () => {
+    const quiz = createQuiz(db, "Mon quiz", Q10);
+
+    // Créer une partie en statut PENDING qui référence ce quiz
+    db.prepare(`
+      INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "018e4f5d-0000-7000-8000-000000000001",
+      quiz.id,
+      "PENDING",
+      "2026-03-14T10:00:00.000Z"
+    );
+
+    // Tentative de suppression doit échouer
+    expect(() => deleteQuizById(db, quiz.id)).toThrow(
+      expect.objectContaining({ status: 403, error: "QUIZ_IN_USE" })
+    );
+  });
+
+  // CA-31 : Garde QUIZ_IN_USE — partie active en OPEN
+  it("CA-31: throws QUIZ_IN_USE if quiz is referenced by an active game in OPEN state", () => {
+    const quiz = createQuiz(db, "Mon quiz", Q10);
+
+    // Créer une partie en statut OPEN qui référence ce quiz
+    db.prepare(`
+      INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "018e4f5d-0000-7000-8000-000000000002",
+      quiz.id,
+      "OPEN",
+      "2026-03-14T10:00:00.000Z"
+    );
+
+    // Tentative de suppression doit échouer
+    expect(() => deleteQuizById(db, quiz.id)).toThrow(
+      expect.objectContaining({ status: 403, error: "QUIZ_IN_USE" })
+    );
+  });
+
+  // CA-32 : Suppression autorisée si partie uniquement en COMPLETED
+  it("CA-32: allows deletion if quiz is only referenced by completed games", () => {
+    const quiz = createQuiz(db, "Mon quiz", Q10);
+
+    // Créer une partie en statut COMPLETED qui référence ce quiz
+    db.prepare(`
+      INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "018e4f5d-0000-7000-8000-000000000003",
+      quiz.id,
+      "COMPLETED",
+      "2026-03-14T10:00:00.000Z"
+    );
+
+    // Suppression doit réussir
+    expect(() => deleteQuizById(db, quiz.id)).not.toThrow();
+
+    // Vérifier que le quiz est bien supprimé
+    const deleted = db.prepare("SELECT * FROM T_QUIZ_QUZ WHERE QUZ_ID = ?").get(quiz.id);
+    expect(deleted).toBeUndefined();
+  });
+
+  // CA-32 : Suppression autorisée si partie en COMPLETED + partie sans statut (ancien)
+  it("CA-32: allows deletion if quiz is referenced by multiple games all in COMPLETED state", () => {
+    const quiz = createQuiz(db, "Mon quiz", Q10);
+
+    // Créer plusieurs parties en COMPLETED
+    db.prepare(`
+      INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "018e4f5d-0000-7000-8000-000000000004",
+      quiz.id,
+      "COMPLETED",
+      "2026-03-14T10:00:00.000Z"
+    );
+
+    db.prepare(`
+      INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "018e4f5d-0000-7000-8000-000000000005",
+      quiz.id,
+      "COMPLETED",
+      "2026-03-14T11:00:00.000Z"
+    );
+
+    // Suppression doit réussir
+    expect(() => deleteQuizById(db, quiz.id)).not.toThrow();
+
+    // Vérifier que le quiz est bien supprimé
+    const deleted = db.prepare("SELECT * FROM T_QUIZ_QUZ WHERE QUZ_ID = ?").get(quiz.id);
+    expect(deleted).toBeUndefined();
+  });
+
+  // CA-31/CA-32 : Partie PENDING + COMPLETED → suppression interdite (une partie active existe)
+  it("CA-31: forbids deletion if one active game exists among multiple games", () => {
+    const quiz = createQuiz(db, "Mon quiz", Q10);
+
+    // Créer une partie PENDING
+    db.prepare(`
+      INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "018e4f5d-0000-7000-8000-000000000006",
+      quiz.id,
+      "PENDING",
+      "2026-03-14T10:00:00.000Z"
+    );
+
+    // Créer une partie COMPLETED
+    db.prepare(`
+      INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT)
+      VALUES (?, ?, ?, ?)
+    `).run(
+      "018e4f5d-0000-7000-8000-000000000007",
+      quiz.id,
+      "COMPLETED",
+      "2026-03-14T11:00:00.000Z"
+    );
+
+    // Suppression doit échouer (PENDING existe)
+    expect(() => deleteQuizById(db, quiz.id)).toThrow(
+      expect.objectContaining({ status: 403, error: "QUIZ_IN_USE" })
+    );
+  });
 });
 
 describe("getQuizById", () => {
