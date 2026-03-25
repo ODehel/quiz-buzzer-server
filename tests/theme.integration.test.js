@@ -143,6 +143,15 @@ describe("GET /api/v1/themes", () => {
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(400);
   });
+
+  test("415 - wrong Content-Type on collection GET", async () => {
+    const res = await request(server)
+      .get("/api/v1/themes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "text/plain");
+    expect(res.status).toBe(415);
+    expect(res.body.error).toBe("UNSUPPORTED_MEDIA_TYPE");
+  });
 });
 
 describe("GET /api/v1/themes/:id", () => {
@@ -185,6 +194,19 @@ describe("GET /api/v1/themes/:id", () => {
       .send({ unexpected: "body" });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe("Musique");
+  });
+
+  test("415 - wrong Content-Type on resource GET", async () => {
+    const created = await request(server)
+      .post("/api/v1/themes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Musique" });
+    const res = await request(server)
+      .get(`/api/v1/themes/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "text/plain");
+    expect(res.status).toBe(415);
+    expect(res.body.error).toBe("UNSUPPORTED_MEDIA_TYPE");
   });
 });
 
@@ -344,6 +366,19 @@ describe("DELETE /api/v1/themes/:id", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ unexpected: "body" });
     expect(res.status).toBe(204);
+  });
+
+  test("415 - wrong Content-Type on DELETE", async () => {
+    const created = await request(server)
+      .post("/api/v1/themes")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ name: "Musique" });
+    const res = await request(server)
+      .delete(`/api/v1/themes/${created.body.id}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "text/plain");
+    expect(res.status).toBe(415);
+    expect(res.body.error).toBe("UNSUPPORTED_MEDIA_TYPE");
   });
 });
 

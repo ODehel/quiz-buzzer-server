@@ -106,6 +106,9 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
       authorize(req);
 
       if (req.method === "GET") {
+        // Valider le Content-Type si fourni (même sur GET)
+        validateContentType(req, { allowMissing: true });
+
         sendJson(res, 200, listGames(db));
         return;
       }
@@ -185,11 +188,17 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
       const id = match[1];
 
       if (req.method === "GET") {
+        // Valider le Content-Type si fourni (même sur GET)
+        validateContentType(req, { allowMissing: true });
+
         sendJson(res, 200, getGameById(db, id));
         return;
       }
 
       if (req.method === "DELETE") {
+        // Valider le Content-Type si fourni (même sur DELETE)
+        validateContentType(req, { allowMissing: true });
+
         // CA-51 : body éventuel ignoré silencieusement
         deleteGame(db, id);
         res.writeHead(204);
