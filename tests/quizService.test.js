@@ -178,6 +178,10 @@ describe("listQuizzes", () => {
     expect(result[0].question_summary.by_level).toBeDefined();
     for (let lvl = 1; lvl <= 5; lvl++) {
       expect(result[0].question_summary.by_level[String(lvl)]).toBeDefined();
+      expect(result[0].question_summary.by_level[String(lvl)].MCQ).toBeDefined();
+      expect(result[0].question_summary.by_level[String(lvl)].SPEED).toBeDefined();
+      expect(typeof result[0].question_summary.by_level[String(lvl)].MCQ).toBe("number");
+      expect(typeof result[0].question_summary.by_level[String(lvl)].SPEED).toBe("number");
     }
   });
 });

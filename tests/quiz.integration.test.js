@@ -268,6 +268,16 @@ describe("GET /api/v1/quizzes", () => {
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.body.data[0].question_summary).toBeDefined();
     expect(res.body.data[0].question_summary.total).toBe(10);
+
+    // Verify all levels 1-5 are present with MCQ and SPEED properties
+    const { by_level } = res.body.data[0].question_summary;
+    for (let lvl = 1; lvl <= 5; lvl++) {
+      expect(by_level[String(lvl)]).toBeDefined();
+      expect(by_level[String(lvl)].MCQ).toBeDefined();
+      expect(by_level[String(lvl)].SPEED).toBeDefined();
+      expect(typeof by_level[String(lvl)].MCQ).toBe("number");
+      expect(typeof by_level[String(lvl)].SPEED).toBe("number");
+    }
   });
 
   it("CA-20: applies default pagination (page=1, limit=20)", async () => {

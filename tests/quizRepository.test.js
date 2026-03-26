@@ -36,6 +36,20 @@ function createTestDb() {
     );
   }
 
+  // Add MCQ questions for testing mixed types
+  for (let i = 13; i <= 20; i++) {
+    db.prepare(
+      `INSERT INTO T_QUESTION_QST
+         (QST_ID, QST_TYPE, QST_THEME_ID, QST_TITLE,
+          QST_CORRECT_ANSWER, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      `qst-${i}`, "MCQ", "thm-1",
+      `Question MCQ numéro ${i - 12} de test pour le quiz ?`,
+      "Réponse", ((i - 13) % 5) + 1, 30, 5, "2026-03-13T10:00:00.000Z"
+    );
+  }
+
   return db;
 }
 
@@ -156,6 +170,59 @@ describe("quizRepository", () => {
       // Les niveaux 1 à 5 doivent être présents (même à 0)
       for (let lvl = 1; lvl <= 5; lvl++) {
         expect(summary.by_level).toHaveProperty(String(lvl));
+        expect(summary.by_level[String(lvl)]).toHaveProperty("MCQ");
+        expect(summary.by_level[String(lvl)]).toHaveProperty("SPEED");
+      }
+    });
+
+    it("ensures all levels 1-5 present even without questions at those levels", () => {
+      // Create a quiz with only SPEED questions from levels 1, 2, 3, 4, 5
+      // qst-5 (level 1, SPEED), qst-1 (level 2, SPEED), qst-2 (level 3, SPEED), etc.
+      // All questions are SPEED type, so all MCQ counts should be 0
+      insertQuiz(db, { id: "quz-1", name: "Only SPEED quiz", createdAt: NOW });
+      insertQuizQuestions(db, "quz-1", Q_IDS); // qst-1..qst-10, all SPEED type
+
+      const result = findAllQuizzes(db, null);
+      const summary = result[0].question_summary;
+
+      expect(summary.total).toBe(10);
+      // Tous les niveaux 1 à 5 doivent être présents avec MCQ et SPEED (même à 0)
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        expect(summary.by_level[String(lvl)]).toBeDefined();
+        expect(summary.by_level[String(lvl)].MCQ).toBeDefined();
+        expect(summary.by_level[String(lvl)].SPEED).toBeDefined();
+        expect(typeof summary.by_level[String(lvl)].MCQ).toBe("number");
+        expect(typeof summary.by_level[String(lvl)].SPEED).toBe("number");
+      }
+      // All questions are SPEED type, so MCQ should be 0 for all levels
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        expect(summary.by_level[String(lvl)].MCQ).toBe(0);
+        expect(summary.by_level[String(lvl)].SPEED).toBeGreaterThanOrEqual(0);
+      }
+    });
+
+    it("ensures all levels with complete MCQ and SPEED structure", () => {
+      // Create a quiz with mixed MCQ and SPEED questions at specific levels
+      // qst-13..qst-20 are MCQ: level 1, 2, 3, 4, 5, 1, 2, 3
+      // Use 10 questions: qst-5 (level 1 SPEED), qst-1 (level 2 SPEED), qst-2 (level 3 SPEED),
+      //                   qst-3 (level 4 SPEED), qst-4 (level 5 SPEED), qst-13 (level 1 MCQ),
+      //                   qst-14 (level 2 MCQ), qst-15 (level 3 MCQ), qst-16 (level 4 MCQ), qst-17 (level 5 MCQ)
+      const mixedIds = ["qst-5", "qst-1", "qst-2", "qst-3", "qst-4", "qst-13", "qst-14", "qst-15", "qst-16", "qst-17"];
+      insertQuiz(db, { id: "quz-2", name: "Mixed MCQ/SPEED quiz", createdAt: NOW });
+      insertQuizQuestions(db, "quz-2", mixedIds);
+
+      const result = findAllQuizzes(db, null);
+      const quizzes = result.filter(q => q.id === "quz-2");
+      expect(quizzes).toHaveLength(1);
+
+      const summary = quizzes[0].question_summary;
+      expect(summary.total).toBe(10);
+
+      // All levels 1-5 must be present with both MCQ and SPEED
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        expect(summary.by_level[String(lvl)]).toBeDefined();
+        expect(summary.by_level[String(lvl)].MCQ).toBe(1); // One MCQ at each level
+        expect(summary.by_level[String(lvl)].SPEED).toBe(1); // One SPEED at each level
       }
     });
 
