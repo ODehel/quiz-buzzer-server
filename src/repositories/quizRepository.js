@@ -81,7 +81,7 @@ export function findAllQuizzes(db, nameFilter) {
       `SELECT q.QUZ_ID, q.QUZ_NAME, q.QUZ_CREATED_AT, q.QUZ_LAST_UPDATED_AT
        FROM T_QUIZ_QUZ q
        ${whereClause}
-       ORDER BY q.QUZ_CREATED_AT DESC`
+       ORDER BY q.QUZ_CREATED_AT DESC, q.QUZ_ID DESC`
     )
     .all(...params);
 
