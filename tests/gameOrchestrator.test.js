@@ -499,6 +499,169 @@ describe("gameOrchestrator", () => {
     });
   });
 
+  // ── trigger_intermediate_ranking (US-014) ──────────────────────────────────
+
+  describe("trigger_intermediate_ranking", () => {
+    it("CA-1: broadcasts intermediate_ranking in OPEN state", () => {
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(true);
+      const msg = mock.messages.find((m) => m.type === "intermediate_ranking");
+      expect(msg).toBeDefined();
+      expect(msg.target).toBe("broadcast");
+      expect(msg.ranking).toHaveLength(3);
+    });
+
+    it("CA-2: broadcasts intermediate_ranking in QUESTION_TITLE without state change", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(true);
+      expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_TITLE");
+      expect(mock.messages.find((m) => m.type === "intermediate_ranking")).toBeDefined();
+    });
+
+    it("CA-2: broadcasts intermediate_ranking in QUESTION_OPEN without state change", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(true);
+      expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_OPEN");
+    });
+
+    it("CA-2: broadcasts intermediate_ranking in QUESTION_BUZZED without state change", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_BUZZED' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(true);
+      expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_BUZZED");
+    });
+
+    it("CA-2: broadcasts intermediate_ranking in QUESTION_CLOSED without state change", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_CLOSED' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(true);
+      expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_CLOSED");
+    });
+
+    it("CA-4: returns INVALID_STATE for PENDING", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'PENDING' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(false);
+      expect(result.error.code).toBe("INVALID_STATE");
+    });
+
+    it("CA-4: returns INVALID_STATE for COMPLETED", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'COMPLETED' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(false);
+      expect(result.error.code).toBe("NO_ACTIVE_GAME");
+    });
+
+    it("CA-4: returns INVALID_STATE for IN_ERROR", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'IN_ERROR' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(false);
+      expect(result.error.code).toBe("NO_ACTIVE_GAME");
+    });
+
+    it("CA-5: returns all participants with score 0 when no questions played", () => {
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      orch.handleTriggerIntermediateRanking();
+      const msg = mock.messages.find((m) => m.type === "intermediate_ranking");
+      expect(msg.ranking).toHaveLength(3);
+      for (const entry of msg.ranking) {
+        expect(entry.cumulative_score).toBe(0);
+        expect(entry.total_time_ms).toBe(0);
+      }
+    });
+
+    it("CA-3: message contains rank, participant_name, participant_order, cumulative_score, total_time_ms", () => {
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      orch.handleTriggerIntermediateRanking();
+      const msg = mock.messages.find((m) => m.type === "intermediate_ranking");
+      for (const entry of msg.ranking) {
+        expect(typeof entry.rank).toBe("number");
+        expect(typeof entry.participant_name).toBe("string");
+        expect(typeof entry.participant_order).toBe("number");
+        expect(typeof entry.cumulative_score).toBe("number");
+        expect(typeof entry.total_time_ms).toBe("number");
+      }
+    });
+
+    it("CA-12: message content is identical for all clients (broadcast)", () => {
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      orch.handleTriggerIntermediateRanking();
+      const broadcasts = mock.messages.filter((m) => m.type === "intermediate_ranking");
+      expect(broadcasts).toHaveLength(1);
+      expect(broadcasts[0].target).toBe("broadcast");
+    });
+
+    it("CA-13: does not affect game workflow state during question", async () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+
+      // Trigger intermediate ranking during question
+      orch.handleTriggerIntermediateRanking();
+
+      // State unchanged
+      expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_TITLE");
+    });
+
+    it("CA-14: ranking is calculated on-the-fly, reflects persisted scores", async () => {
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+
+      // Play Q1 through full cycle
+      orch.handleTriggerTitle();
+      orch.handleTriggerChoices();
+      orch.handleAnswer(1, "A", 3100); // Alice: correct
+      orch.handleAnswer(2, "C", 5200); // Bob: wrong
+      orch.handleAnswer(3, "A", 4000); // Charlie: correct
+      await orch.handleTriggerCorrection();
+      orch.handleTriggerNextQuestion();
+
+      // Now trigger intermediate ranking in OPEN state
+      orch.handleTriggerIntermediateRanking();
+
+      const msg = mock.messages.filter((m) => m.type === "intermediate_ranking");
+      expect(msg).toHaveLength(1);
+      const ranking = msg[0].ranking;
+      expect(ranking).toHaveLength(3);
+
+      // Alice and Charlie both scored 10, Alice was faster (3100 vs 4000)
+      expect(ranking[0].cumulative_score).toBe(10);
+      expect(ranking[1].cumulative_score).toBe(10);
+      expect(ranking[2].cumulative_score).toBe(0);
+      expect(ranking[2].participant_name).toBe("Bob");
+    });
+
+    it("returns NO_ACTIVE_GAME when no game exists", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'COMPLETED' WHERE GAM_ID = ?").run("gam-1");
+      const mock = createMockSend();
+      const orch = createGameOrchestrator(db, mock);
+      const result = orch.handleTriggerIntermediateRanking();
+      expect(result.ok).toBe(false);
+      expect(result.error.code).toBe("NO_ACTIVE_GAME");
+    });
+  });
+
   // ── No active game ────────────────────────────────────────────────────────
 
   describe("no active game", () => {

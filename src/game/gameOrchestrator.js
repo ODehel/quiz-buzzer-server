@@ -20,6 +20,7 @@ import { createGameTimer } from "./gameTimer.js";
 import { createAnswerProcessor } from "./gameAnswerProcessor.js";
 import { createSpeedProcessor } from "./gameSpeedProcessor.js";
 import { persistWithRetry } from "./persistWithRetry.js";
+import { calculateIntermediateRanking } from "./gameRankingCalculator.js";
 import { logInfo, logWarn } from "../utils/logger.js";
 
 /**
@@ -736,6 +737,42 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     return true;
   }
 
+  // ── trigger_intermediate_ranking (US-014) ────────────────────────────────
+
+  /**
+   * Calculates and broadcasts the intermediate ranking.
+   * Allowed in states: OPEN, QUESTION_TITLE, QUESTION_OPEN, QUESTION_BUZZED, QUESTION_CLOSED.
+   * Does NOT affect the workflow or trigger any state transition (CA-2, CA-13).
+   */
+  function handleTriggerIntermediateRanking() {
+    const game = loadActiveGame();
+    if (!game) return errorResult("NO_ACTIVE_GAME", "No active game found.");
+
+    // CA-4: PENDING, COMPLETED, IN_ERROR → INVALID_STATE
+    const allowedStates = new Set(["OPEN", "QUESTION_TITLE", "QUESTION_OPEN", "QUESTION_BUZZED", "QUESTION_CLOSED"]);
+    if (!allowedStates.has(game.GAM_STATUS)) {
+      return errorResult("INVALID_STATE", "Intermediate ranking cannot be displayed in the current game state.");
+    }
+
+    // CA-8: ranking based exclusively on persisted data
+    const ranking = calculateIntermediateRanking(db, game.GAM_ID);
+
+    // CA-16: log at INFO level
+    logInfo("GAME_INTERMEDIATE_RANKING_REQUESTED", {
+      game_id: game.GAM_ID,
+      game_status: game.GAM_STATUS,
+      ranking_size: ranking.length,
+    });
+
+    // CA-10, CA-11, CA-12: broadcast to all buzzers + Angular (identical message)
+    sender.broadcast({
+      type: "intermediate_ranking",
+      ranking,
+    });
+
+    return okResult();
+  }
+
   return {
     handleTriggerTitle,
     handleTriggerChoices,
@@ -745,6 +782,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     handleBuzz,
     handleValidateAnswer,
     handleInvalidateAnswer,
+    handleTriggerIntermediateRanking,
     recoverFromCrash,
   };
 }
