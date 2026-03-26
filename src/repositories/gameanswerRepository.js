@@ -72,11 +72,18 @@ export function findAnswersByGameAndQuestion(db, gameId, questionId) {
 }
 
 /**
- * Retourne toutes les réponses d'une partie.
+ * Retourne toutes les réponses d'une partie, avec asymétrie SPEED/MCQ.
+ *
+ * IMPORTANT: Due to SPEED vs MCQ design (US-012 CA-26/CA-27):
+ * - MCQ questions: Returns one row per participant (complete for all players)
+ * - SPEED questions: Returns 0-1 rows (winner only with GAA_ANSWER="SPEED_WIN", or empty if timeout/all invalid)
+ *
+ * This is not an SQL bug but intentional — SPEED records only the winner.
+ * Ranking queries must account for missing rows in SPEED questions.
  *
  * @param {import("better-sqlite3").Database} db
  * @param {string} gameId
- * @returns {Array}
+ * @returns {Array} Rows ordered by GAA_QUESTION_ID, then GAA_PARTICIPANT_ORDER (sparse for SPEED)
  */
 export function findAnswersByGame(db, gameId) {
   return db
