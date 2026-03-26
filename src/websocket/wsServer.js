@@ -411,11 +411,15 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         connectedAt: new Date().toISOString(),
       });
 
+      // Calculate remaining token expiration time (US-003)
+      const expiresIn = decoded.exp - Math.floor(Date.now() / 1000);
+
       // Send auth_success (CA-6)
       ws.send(JSON.stringify({
         type: "auth_success",
         role: tokenRole,
         username: user.USR_USERNAME,
+        expires_in: expiresIn,
       }));
 
       // Log successful authentication (CA-19)
