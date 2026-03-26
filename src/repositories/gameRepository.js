@@ -81,6 +81,28 @@ export function findAllGames(db) {
 }
 
 /**
+ * Retourne les parties avec pagination, triées par date de création décroissante.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {number} page
+ * @param {number} limit
+ * @returns {{ data: Array<{ GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT, GAM_LAST_UPDATED_AT }>, total: number }}
+ */
+export function findAllGamesPaginated(db, page, limit) {
+  const total = db.prepare("SELECT COUNT(*) AS count FROM T_GAME_GAM").get().count;
+  const offset = (page - 1) * limit;
+  const data = db
+    .prepare(
+      `SELECT GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT, GAM_LAST_UPDATED_AT
+       FROM T_GAME_GAM
+       ORDER BY GAM_CREATED_AT DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(limit, offset);
+  return { data, total };
+}
+
+/**
  * Retourne le nombre de parties actives (PENDING ou OPEN).
  *
  * @param {import("better-sqlite3").Database} db
