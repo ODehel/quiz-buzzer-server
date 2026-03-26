@@ -6,6 +6,7 @@ import {
   findGameById,
   findParticipantsByGameId,
   findAllGames,
+  findAllGamesPaginated,
   countActiveGames,
   updateGameStatus,
   updateGameLastUpdated,
@@ -156,18 +157,28 @@ export function createGame(db, quizId, participants) {
 }
 
 /**
- * Liste toutes les parties, triées par date de création décroissante (CA-15 à CA-18).
+ * Liste les parties avec pagination, triées par date de création décroissante (CA-15 à CA-18).
  *
  * @param {import("better-sqlite3").Database} db
- * @returns {Array}
+ * @param {number} page
+ * @param {number} limit
+ * @returns {Object}
  */
-export function listGames(db) {
-  const games = findAllGames(db);
+export function listGames(db, page, limit) {
+  const { data: games, total } = findAllGamesPaginated(db, page, limit);
   const participantsStmt = db.prepare(
     `SELECT GPA_ORDER, GPA_NAME FROM T_GAME_PARTICIPANT_GPA
      WHERE GPA_GAME_ID = ? ORDER BY GPA_ORDER`
   );
-  return games.map((row) => toApiFormat(row, participantsStmt.all(row.GAM_ID)));
+  const totalPages = total === 0 ? 0 : Math.ceil(total / limit);
+
+  return {
+    data: games.map((row) => toApiFormat(row, participantsStmt.all(row.GAM_ID))),
+    page,
+    limit,
+    total,
+    total_pages: totalPages,
+  };
 }
 
 /**

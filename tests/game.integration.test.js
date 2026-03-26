@@ -61,7 +61,7 @@ beforeEach((done) => {
   server = createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     if (url.pathname === "/api/v1/games") {
-      collectionHandler(req, res);
+      collectionHandler(req, res, url);
     } else if (url.pathname.match(/^\/api\/v1\/games\/[^/]+$/)) {
       resourceHandler(req, res, url);
     } else {
@@ -314,8 +314,13 @@ describe("GET /api/v1/games", () => {
       .get("/api/v1/games")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(Array.isArray(res.body)).toBe(true);
-    expect(res.body.length).toBe(1);
+    expect(res.body).toHaveProperty("data");
+    expect(Array.isArray(res.body.data)).toBe(true);
+    expect(res.body.data.length).toBe(1);
+    expect(res.body).toHaveProperty("page", 1);
+    expect(res.body).toHaveProperty("limit", 20);
+    expect(res.body).toHaveProperty("total", 1);
+    expect(res.body).toHaveProperty("total_pages", 1);
   });
 
   it("CA-16: returns 200 with empty array when no games", async () => {
@@ -323,7 +328,9 @@ describe("GET /api/v1/games", () => {
       .get("/api/v1/games")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([]);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+    expect(res.body.total_pages).toBe(0);
   });
 
   it("CA-17: returns games sorted by created_at descending", async () => {
@@ -339,7 +346,7 @@ describe("GET /api/v1/games", () => {
       .get("/api/v1/games")
       .set("Authorization", `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(res.body[0].created_at > res.body[1].created_at).toBe(true);
+    expect(res.body.data[0].created_at > res.body.data[1].created_at).toBe(true);
   });
 
   it("CA-18: each game contains all required fields", async () => {
@@ -347,7 +354,7 @@ describe("GET /api/v1/games", () => {
     const res = await request(server)
       .get("/api/v1/games")
       .set("Authorization", `Bearer ${adminToken}`);
-    const game = res.body[0];
+    const game = res.body.data[0];
     expect(game).toHaveProperty("id");
     expect(game).toHaveProperty("quiz_id", QUIZ_ID);
     expect(game).toHaveProperty("status", "PENDING");

@@ -39,6 +39,30 @@ function validateAllowedFields(body, allowedFields) {
 }
 
 /**
+ * Valide les paramètres de pagination.
+ *
+ * @param {URL} url
+ * @returns {{ page: number, limit: number }}
+ * @throws {AppError} 400 INVALID_PAGINATION
+ */
+function parsePagination(url) {
+  const rawPage = url.searchParams.get("page");
+  const rawLimit = url.searchParams.get("limit");
+
+  let page = rawPage !== null ? Number(rawPage) : 1;
+  let limit = rawLimit !== null ? Number(rawLimit) : 20;
+
+  if (
+    !Number.isInteger(page) || page < 1 ||
+    !Number.isInteger(limit) || limit < 1 || limit > 100
+  ) {
+    throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters.");
+  }
+
+  return { page, limit };
+}
+
+/**
  * Gestion centralisée des erreurs.
  *
  * @param {import("node:http").ServerResponse} res
@@ -67,7 +91,7 @@ function handleError(res, err) {
  * @param {import("../middlewares/rateLimiter.js").RateLimiter} rateLimiter
  */
 export function createGamesCollectionHandler(db, config, authenticate, authorize, rateLimiter) {
-  return async (req, res) => {
+  return async (req, res, url) => {
     try {
       // CA-54 : Rate limiting
       const ip = req.socket.remoteAddress || "unknown";
@@ -110,7 +134,9 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
         // Valider le Content-Type si fourni (même sur GET)
         validateContentType(req, { allowMissing: true });
 
-        sendJson(res, 200, listGames(db));
+        const { page, limit } = parsePagination(url);
+        const result = listGames(db, page, limit);
+        sendJson(res, 200, result);
         return;
       }
 

@@ -127,7 +127,7 @@ function requestHandler(req, res) {
 
   // Routes parties — collection
   if (url.pathname === "/api/v1/games") {
-    gamesCollectionHandler(req, res);
+    gamesCollectionHandler(req, res, url);
     return;
   }
 
