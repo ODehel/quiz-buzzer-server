@@ -336,4 +336,182 @@ describe("GET /api/v1/games/:id/results", () => {
     expect(res.body.ranking[0].score).toBe(0);
     expect(res.body.questions).toHaveLength(0);
   });
+
+  it("returns 200 with asymmetric answers: MCQ (N per question) vs SPEED (0-1 per question)", async () => {
+    // This test validates the SPEED vs MCQ asymmetry documented in US-012/US-013
+    // MCQ: one row per participant in T_GAME_ANSWER_GAA
+    // SPEED: 0-1 rows (winner only with answer="SPEED_WIN", or empty if no winner)
+
+    const QUESTION_MCQ_ID = "018e4f5b-0000-7000-8000-000000000003";
+    const QUESTION_SPEED_ID = "018e4f5b-0000-7000-8000-000000000004";
+    const QUESTION_SPEED_EMPTY_ID = "018e4f5b-0000-7000-8000-000000000005";
+
+    // Setup theme + questions
+    db.prepare(
+      `INSERT INTO T_THEME_THM (THM_ID, THM_NAME, THM_CREATED_AT) VALUES (?, ?, ?)`
+    ).run("thm-1", "Science", "2026-03-13T09:00:00.000Z");
+
+    // MCQ question
+    db.prepare(
+      `INSERT INTO T_QUESTION_QST (QST_ID, QST_TITLE, QST_TYPE, QST_THEME_ID, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CORRECT_ANSWER, QST_CHOICE_A, QST_CHOICE_B, QST_CHOICE_C, QST_CHOICE_D, QST_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      QUESTION_MCQ_ID,
+      "MCQ Question",
+      "MCQ",
+      "thm-1",
+      1,
+      30,
+      10,
+      "A",
+      "Option A",
+      "Option B",
+      "Option C",
+      "Option D",
+      "2026-03-13T09:00:00.000Z"
+    );
+
+    // SPEED question (with winner)
+    db.prepare(
+      `INSERT INTO T_QUESTION_QST (QST_ID, QST_TITLE, QST_TYPE, QST_THEME_ID, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CORRECT_ANSWER, QST_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      QUESTION_SPEED_ID,
+      "SPEED Question",
+      "SPEED",
+      "thm-1",
+      1,
+      10,
+      15,
+      "correct answer",
+      "2026-03-13T09:00:00.000Z"
+    );
+
+    // SPEED question (without winner - no answers)
+    db.prepare(
+      `INSERT INTO T_QUESTION_QST (QST_ID, QST_TITLE, QST_TYPE, QST_THEME_ID, QST_LEVEL, QST_TIME_LIMIT, QST_POINTS, QST_CORRECT_ANSWER, QST_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      QUESTION_SPEED_EMPTY_ID,
+      "SPEED Question (timeout)",
+      "SPEED",
+      "thm-1",
+      1,
+      10,
+      15,
+      "correct answer",
+      "2026-03-13T09:00:00.000Z"
+    );
+
+    // Setup quiz + game
+    db.prepare(
+      `INSERT INTO T_QUIZ_QUZ (QUZ_ID, QUZ_NAME, QUZ_CREATED_AT) VALUES (?, ?, ?)`
+    ).run(QUIZ_ID, "Mixed Quiz", "2026-03-13T10:00:00.000Z");
+
+    db.prepare(
+      `INSERT INTO T_GAME_GAM (GAM_ID, GAM_QUIZ_ID, GAM_STATUS, GAM_CREATED_AT) VALUES (?, ?, 'COMPLETED', ?)`
+    ).run(GAME_ID, QUIZ_ID, "2026-03-13T10:00:00.000Z");
+
+    // Add 2 participants
+    db.prepare(
+      `INSERT INTO T_GAME_PARTICIPANT_GPA (GPA_GAME_ID, GPA_NAME, GPA_ORDER) VALUES (?, ?, ?)`
+    ).run(GAME_ID, "Alice", 1);
+    db.prepare(
+      `INSERT INTO T_GAME_PARTICIPANT_GPA (GPA_GAME_ID, GPA_NAME, GPA_ORDER) VALUES (?, ?, ?)`
+    ).run(GAME_ID, "Bob", 2);
+
+    // MCQ answers (both participants)
+    db.prepare(
+      `INSERT INTO T_GAME_ANSWER_GAA (GAA_GAME_ID, GAA_QUESTION_ID, GAA_PARTICIPANT_ORDER, GAA_ANSWER, GAA_TIME_MS, GAA_POINTS_EARNED, GAA_CUMULATIVE_SCORE, GAA_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      GAME_ID,
+      QUESTION_MCQ_ID,
+      1,
+      "A",
+      5000,
+      10,
+      10,
+      "2026-03-13T10:05:00.000Z"
+    );
+    db.prepare(
+      `INSERT INTO T_GAME_ANSWER_GAA (GAA_GAME_ID, GAA_QUESTION_ID, GAA_PARTICIPANT_ORDER, GAA_ANSWER, GAA_TIME_MS, GAA_POINTS_EARNED, GAA_CUMULATIVE_SCORE, GAA_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      GAME_ID,
+      QUESTION_MCQ_ID,
+      2,
+      "B",
+      6000,
+      0,
+      0,
+      "2026-03-13T10:05:05.000Z"
+    );
+
+    // SPEED answer (only winner)
+    db.prepare(
+      `INSERT INTO T_GAME_ANSWER_GAA (GAA_GAME_ID, GAA_QUESTION_ID, GAA_PARTICIPANT_ORDER, GAA_ANSWER, GAA_TIME_MS, GAA_POINTS_EARNED, GAA_CUMULATIVE_SCORE, GAA_CREATED_AT)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      GAME_ID,
+      QUESTION_SPEED_ID,
+      2,
+      "SPEED_WIN",
+      3500,
+      15,
+      15,
+      "2026-03-13T10:10:00.000Z"
+    );
+
+    // SPEED timeout (no answers)
+    // (No answers inserted for QUESTION_SPEED_EMPTY_ID)
+
+    const res = await request(server)
+      .get(`/api/v1/games/${GAME_ID}/results`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+
+    // Verify ranking
+    expect(res.body.ranking).toHaveLength(2);
+    expect(res.body.ranking[0].name).toBe("Bob");
+    expect(res.body.ranking[0].score).toBe(15); // 0 (MCQ) + 15 (SPEED_WIN)
+    expect(res.body.ranking[1].name).toBe("Alice");
+    expect(res.body.ranking[1].score).toBe(10); // 10 (MCQ) + 0 (didn't participate in SPEED)
+
+    // Verify questions structure
+    // Note: Only 2 questions appear because SPEED timeout has no answers in T_GAME_ANSWER_GAA
+    // (CA-27: "no persistence when all players invalidated or timer expired")
+    expect(res.body.questions).toHaveLength(2);
+
+    // MCQ question: 2 answers (one per participant)
+    const mcqQuestion = res.body.questions.find((q) => q.question_id === QUESTION_MCQ_ID);
+    expect(mcqQuestion.answers).toHaveLength(2);
+    expect(mcqQuestion.answers[0]).toEqual({
+      participant_order: 1,
+      answer: "A",
+      time_ms: 5000,
+      points_earned: 10,
+      cumulative_score: 10,
+    });
+    expect(mcqQuestion.answers[1]).toEqual({
+      participant_order: 2,
+      answer: "B",
+      time_ms: 6000,
+      points_earned: 0,
+      cumulative_score: 0,
+    });
+
+    // SPEED question (with winner): 1 answer (winner only with SPEED_WIN)
+    const speedQuestion = res.body.questions.find((q) => q.question_id === QUESTION_SPEED_ID);
+    expect(speedQuestion.answers).toHaveLength(1);
+    expect(speedQuestion.answers[0]).toEqual({
+      participant_order: 2,
+      answer: "SPEED_WIN",
+      time_ms: 3500,
+      points_earned: 15,
+      cumulative_score: 15,
+    });
+
+  });
 });

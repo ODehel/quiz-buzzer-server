@@ -426,7 +426,11 @@ export function getGameResults(db, id) {
     .sort((a, b) => b.score - a.score || a.total_time_ms - b.total_time_ms)
     .map((entry, index) => ({ rank: index + 1, ...entry }));
 
-  // Build per-question details
+  // Build per-question details (SPEED vs MCQ asymmetry)
+  // Note: T_GAME_ANSWER_GAA has different row counts by question type:
+  // - MCQ: one row per participant (correct or incorrect answer)
+  // - SPEED: 0-1 rows (winner only with answer="SPEED_WIN", or empty if timeout/all invalid)
+  // This asymmetry is documented in US-012 (CA-26, CA-27) and US-013.
   const questionMap = new Map();
   for (const a of answers) {
     if (!questionMap.has(a.GAA_QUESTION_ID)) {
