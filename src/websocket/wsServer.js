@@ -6,6 +6,7 @@ import { createGameOrchestrator } from "../game/gameOrchestrator.js";
 import { findActiveGame } from "../repositories/gameanswerRepository.js";
 import { findParticipantsByGameId } from "../repositories/gameRepository.js";
 import { RateLimiter } from "../middlewares/rateLimiter.js";
+import { startHeartbeat, stopHeartbeat } from "./ws-heartbeat.js";
 
 export const MAX_BUZZERS = 10;
 export const AUTH_TIMEOUT_MS = 60_000;
@@ -44,6 +45,7 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
   wsRateLimitConnections = WS_RATE_LIMIT_CONNECTIONS,
   wsRateLimitWindowMs = WS_RATE_LIMIT_WINDOW_MS,
   orchestratorOptions = {},
+  heartbeatOptions = {},
 } = {}) {
   const wss = new WebSocketServer({ noServer: true });
 
@@ -378,6 +380,7 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       // Helper: close and remove an existing session from the registry
       function replaceExistingSession(existingSub) {
         const existing = registry.get(existingSub);
+        stopHeartbeat(existing.ws, heartbeatOptions);
         registry.delete(existingSub);
         existing.ws.close(WS_CLOSE_SESSION_REPLACED, "Session replaced.");
       }
@@ -424,6 +427,9 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         expires_in: expiresIn,
       }));
 
+      // Start heartbeat after successful authentication (US-015 CA-1)
+      startHeartbeat(ws, { username: user.USR_USERNAME, role: tokenRole }, { ...heartbeatOptions, ip });
+
       // Log successful authentication (CA-19)
       logInfo("WEBSOCKET_AUTHENTICATED", {
         username: user.USR_USERNAME,
@@ -435,6 +441,9 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
 
     ws.on("close", () => {
       clearTimeout(authTimer);
+
+      // Stop heartbeat timer (US-015 CA-3, CA-11)
+      stopHeartbeat(ws, heartbeatOptions);
 
       // Only log disconnect if this ws is still the registered connection (CA-21)
       if (sub !== null) {
