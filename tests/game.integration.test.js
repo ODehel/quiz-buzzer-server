@@ -91,7 +91,7 @@ async function getCreatedGameId() {
   const list = await request(server)
     .get("/api/v1/games")
     .set("Authorization", `Bearer ${adminToken}`);
-  return list.body[0]?.id;
+  return list.body.data[0]?.id;
 }
 
 // ─── POST /api/v1/games ───────────────────────────────────────────────────────
