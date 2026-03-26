@@ -531,6 +531,9 @@ describe("attachWebSocket — successful authentication", () => {
     expect(msg.type).toBe("auth_success");
     expect(msg.role).toBe("buzzer");
     expect(msg.username).toBe("quiz_buzzer_01");
+    expect(msg.expires_in).toBeDefined();
+    expect(typeof msg.expires_in).toBe("number");
+    expect(msg.expires_in).toBeGreaterThan(0);
   });
 
   it("CA-15: should send auth_success for a valid admin token", async () => {
@@ -539,6 +542,9 @@ describe("attachWebSocket — successful authentication", () => {
     expect(msg.type).toBe("auth_success");
     expect(msg.role).toBe("admin");
     expect(msg.username).toBe("admin");
+    expect(msg.expires_in).toBeDefined();
+    expect(typeof msg.expires_in).toBe("number");
+    expect(msg.expires_in).toBeGreaterThan(0);
   });
 
   it("CA-19: should log WEBSOCKET_AUTHENTICATED with summary for buzzer", async () => {
@@ -663,6 +669,8 @@ describe("attachWebSocket — session replacement", () => {
 
     const msg = await newAuthPromise;
     expect(msg.type).toBe("auth_success");
+    expect(msg.expires_in).toBeDefined();
+    expect(typeof msg.expires_in).toBe("number");
   });
 
   it("CA-17: should close old admin with 4004 when same admin sub reconnects", async () => {
@@ -680,6 +688,8 @@ describe("attachWebSocket — session replacement", () => {
 
     const msg = await newAuthPromise;
     expect(msg.type).toBe("auth_success");
+    expect(msg.expires_in).toBeDefined();
+    expect(typeof msg.expires_in).toBe("number");
   });
 
   it("CA-17: should close old admin with 4004 when a different admin sub connects", async () => {
@@ -698,6 +708,8 @@ describe("attachWebSocket — session replacement", () => {
     const msg = await newAuthPromise;
     expect(msg.type).toBe("auth_success");
     expect(msg.username).toBe("admin2");
+    expect(msg.expires_in).toBeDefined();
+    expect(typeof msg.expires_in).toBe("number");
   });
 });
 
@@ -737,6 +749,7 @@ describe("attachWebSocket — connection limits", () => {
         "buzzer"
       );
       expect(msg.type).toBe("auth_success");
+      expect(msg.expires_in).toBeDefined();
       clients.push(ws);
     }
     for (const ws of clients) ws.terminate();
@@ -863,6 +876,7 @@ describe("attachWebSocket — buzzer slot freed on disconnect (CA-14)", () => {
     const newBuzzer = await connectWs(server);
     const msg = await authenticateWs(newBuzzer, `buzzer-${String(MAX_BUZZERS + 1).padStart(3, "0")}`, "buzzer");
     expect(msg.type).toBe("auth_success");
+    expect(msg.expires_in).toBeDefined();
 
     newBuzzer.terminate();
     // clients[0] was already closed above; terminate the remaining clients
