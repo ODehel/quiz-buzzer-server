@@ -20,7 +20,7 @@ export const WS_CLOSE_SESSION_REPLACED = 4004;
 /** Message types reserved for admin (game master). */
 const ADMIN_MESSAGE_TYPES = new Set([
   "trigger_title", "trigger_choices", "trigger_correction", "trigger_next_question",
-  "validate_answer", "invalidate_answer",
+  "validate_answer", "invalidate_answer", "trigger_intermediate_ranking",
 ]);
 
 /** Message types reserved for buzzers (players). */
@@ -207,6 +207,8 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         result = await orchestrator.handleValidateAnswer();
       } else if (type === "invalidate_answer") {
         result = await orchestrator.handleInvalidateAnswer();
+      } else if (type === "trigger_intermediate_ranking") {
+        result = orchestrator.handleTriggerIntermediateRanking();
       }
 
       if (result && !result.ok) {
