@@ -144,13 +144,13 @@ describe("GET /api/v1/themes", () => {
     expect(res.status).toBe(400);
   });
 
-  test("415 - wrong Content-Type on collection GET", async () => {
+  test("CA-19a - Content-Type ignored on GET collection", async () => {
     const res = await request(server)
       .get("/api/v1/themes")
       .set("Authorization", `Bearer ${adminToken}`)
       .set("Content-Type", "text/plain");
-    expect(res.status).toBe(415);
-    expect(res.body.error).toBe("UNSUPPORTED_MEDIA_TYPE");
+    expect(res.status).toBe(200);
+    // Content-Type is ignored on GET
   });
 });
 
@@ -196,7 +196,7 @@ describe("GET /api/v1/themes/:id", () => {
     expect(res.body.name).toBe("Musique");
   });
 
-  test("415 - wrong Content-Type on resource GET", async () => {
+  test("CA-12a - Content-Type ignored on GET resource", async () => {
     const created = await request(server)
       .post("/api/v1/themes")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -205,8 +205,8 @@ describe("GET /api/v1/themes/:id", () => {
       .get(`/api/v1/themes/${created.body.id}`)
       .set("Authorization", `Bearer ${adminToken}`)
       .set("Content-Type", "text/plain");
-    expect(res.status).toBe(415);
-    expect(res.body.error).toBe("UNSUPPORTED_MEDIA_TYPE");
+    expect(res.status).toBe(200);
+    // Content-Type is ignored on GET
   });
 });
 
@@ -368,7 +368,7 @@ describe("DELETE /api/v1/themes/:id", () => {
     expect(res.status).toBe(204);
   });
 
-  test("415 - wrong Content-Type on DELETE", async () => {
+  test("CA-31a - Content-Type ignored on DELETE", async () => {
     const created = await request(server)
       .post("/api/v1/themes")
       .set("Authorization", `Bearer ${adminToken}`)
@@ -377,8 +377,8 @@ describe("DELETE /api/v1/themes/:id", () => {
       .delete(`/api/v1/themes/${created.body.id}`)
       .set("Authorization", `Bearer ${adminToken}`)
       .set("Content-Type", "text/plain");
-    expect(res.status).toBe(415);
-    expect(res.body.error).toBe("UNSUPPORTED_MEDIA_TYPE");
+    expect(res.status).toBe(204);
+    // Content-Type is ignored on DELETE
   });
 });
 

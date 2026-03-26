@@ -123,8 +123,7 @@ export function createThemesCollectionHandler(db, config, authenticate, authoriz
       }
 
       // GET — Liste paginée (CA-13 à CA-19)
-      // Valider le Content-Type si fourni (même sur GET)
-      validateContentType(req, { allowMissing: true });
+      // Content-Type est ignoré sur GET
 
       const { page, limit } = parsePagination(url);
       const result = listThemes(db, page, limit);
@@ -178,8 +177,7 @@ export function createThemeResourceHandler(db, config, authenticate, authorize, 
       const id = url.pathname.split("/").pop();
 
       if (req.method === "GET") {
-        // Valider le Content-Type si fourni (même sur GET)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur GET
 
         const theme = getTheme(db, id);
         sendJson(res, 200, theme);
@@ -212,8 +210,7 @@ export function createThemeResourceHandler(db, config, authenticate, authorize, 
       }
 
       // DELETE (CA-28 à CA-31)
-      // Valider le Content-Type si fourni (même sur DELETE)
-      validateContentType(req, { allowMissing: true });
+      // Content-Type est ignoré sur DELETE
 
       deleteThemeById(db, id);
       res.writeHead(204);
