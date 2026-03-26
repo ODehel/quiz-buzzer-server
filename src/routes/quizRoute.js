@@ -112,8 +112,7 @@ export function createQuizzesCollectionHandler(db, config, authenticate, authori
       authorize(req);
 
       if (req.method === "GET") {
-        // Valider le Content-Type si fourni (même sur GET)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur GET
 
         // CA-18 : Filtrage optionnel par nom
         const nameFilter = url.searchParams.get("name") || null;
@@ -186,8 +185,7 @@ export function createQuizResourceHandler(db, config, authenticate, authorize, r
       const id = match[1];
 
       if (req.method === "GET") {
-        // Valider le Content-Type si fourni (même sur GET)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur GET
 
         const quiz = getQuizById(db, id);
         sendJson(res, 200, quiz);
@@ -195,8 +193,7 @@ export function createQuizResourceHandler(db, config, authenticate, authorize, r
       }
 
       if (req.method === "DELETE") {
-        // Valider le Content-Type si fourni (même sur DELETE)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur DELETE
 
         // CA-35 : body ignoré silencieusement
         deleteQuizById(db, id);

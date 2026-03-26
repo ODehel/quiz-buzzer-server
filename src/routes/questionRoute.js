@@ -82,8 +82,7 @@ export function createQuestionsCollectionHandler(db, config, authenticate, autho
       }
 
       // GET — Liste paginée avec filtrage (CA-26 à CA-44)
-      // Valider le Content-Type si fourni (même sur GET)
-      validateContentType(req, { allowMissing: true });
+      // Content-Type est ignoré sur GET
 
       const { page, limit } = parsePagination(url);
       const filters = parseFilters(url, db);
@@ -138,8 +137,7 @@ export function createQuestionResourceHandler(db, config, authenticate, authoriz
       const id = url.pathname.split("/").pop();
 
       if (req.method === "GET") {
-        // Valider le Content-Type si fourni (même sur GET)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur GET
 
         const question = getQuestion(db, id);
         sendJson(res, 200, question);
@@ -175,8 +173,7 @@ export function createQuestionResourceHandler(db, config, authenticate, authoriz
       }
 
       // DELETE (CA-74 à CA-77)
-      // Valider le Content-Type si fourni (même sur DELETE)
-      validateContentType(req, { allowMissing: true });
+      // Content-Type est ignoré sur DELETE
 
       deleteQuestionById(db, id);
       res.writeHead(204);

@@ -131,8 +131,7 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
       authorize(req);
 
       if (req.method === "GET") {
-        // Valider le Content-Type si fourni (même sur GET)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur GET
 
         const { page, limit } = parsePagination(url);
         const result = listGames(db, page, limit);
@@ -215,16 +214,14 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
       const id = match[1];
 
       if (req.method === "GET") {
-        // Valider le Content-Type si fourni (même sur GET)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur GET
 
         sendJson(res, 200, getGameById(db, id));
         return;
       }
 
       if (req.method === "DELETE") {
-        // Valider le Content-Type si fourni (même sur DELETE)
-        validateContentType(req, { allowMissing: true });
+        // Content-Type est ignoré sur DELETE
 
         // CA-51 : body éventuel ignoré silencieusement
         deleteGame(db, id);
@@ -314,7 +311,7 @@ export function createGameResultsHandler(db, config, authenticate, authorize, ra
       authenticate(req);
       authorize(req);
 
-      validateContentType(req, { allowMissing: true });
+      // Content-Type est ignoré sur GET
 
       const match = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/results$/);
       const id = match[1];
