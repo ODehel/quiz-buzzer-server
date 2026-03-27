@@ -210,6 +210,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     } else {
       // CA-9: timer expires during QUESTION_OPEN → normal expiration
       sender.broadcast({ type: "timer_end" });
+      // US-018 CA-6: play TIMER_END on all buzzers
+      sender.broadcastSystemSound?.("TIMER_END");
       currentTimer = null;
       // Close the question with no winner
       closeSpeedQuestionNoWinner(game);
@@ -241,6 +243,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
         points_earned: r.pointsEarned,
         cumulative_score: r.cumulativeScore,
       });
+      // US-018 CA-4/CA-5: play CORRECT_ANSWER or WRONG_ANSWER
+      sender.sendSystemSoundToBuzzer?.(r.participantOrder, r.correct ? "CORRECT_ANSWER" : "WRONG_ANSWER");
     }
 
     // CA-31: send question_result_summary to admin
@@ -297,6 +301,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
           currentProcessor.expire();
         }
         sender.broadcast({ type: "timer_end" });
+        // US-018 CA-6: play TIMER_END on all buzzers
+        sender.broadcastSystemSound?.("TIMER_END");
         currentTimer = null;
       },
     });
@@ -404,6 +410,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
 
     // CA-14: send buzz_accepted to the buzzer
     sender.sendToBuzzer(participantOrder, { type: "buzz_accepted" });
+    // US-018 CA-1: play BUZZ_PRESSED on the buzzer
+    sender.sendSystemSoundToBuzzer?.(participantOrder, "BUZZ_PRESSED");
 
     // CA-15: send buzz_locked to all other buzzers + admin
     const names = loadParticipantNames(game.GAM_ID);
@@ -419,6 +427,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     for (const order of orders) {
       if (order !== participantOrder) {
         sender.sendToBuzzer(order, msg);
+        // US-018 CA-2: play BUZZ_LOCKED on non-buzzer buzzers
+        sender.sendSystemSoundToBuzzer?.(order, "BUZZ_LOCKED");
       }
     }
 
@@ -497,6 +507,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
         points_earned: r.pointsEarned,
         cumulative_score: r.cumulativeScore,
       });
+      // US-018 CA-4/CA-5: play CORRECT_ANSWER or WRONG_ANSWER
+      sender.sendSystemSoundToBuzzer?.(r.participantOrder, r.correct ? "CORRECT_ANSWER" : "WRONG_ANSWER");
     }
 
     // CA-31: send question_result_summary to admin
@@ -529,6 +541,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
 
     // CA-22: send buzz_invalidated to the invalidated buzzer
     sender.sendToBuzzer(invalidatedOrder, { type: "buzz_invalidated" });
+    // US-018 CA-3: play BUZZ_INVALIDATED on the invalidated buzzer
+    sender.sendSystemSoundToBuzzer?.(invalidatedOrder, "BUZZ_INVALIDATED");
 
     // CA-24: no more available players OR timer expired during buzz → close question
     if (!invalidateResult.hasAvailablePlayers || currentSpeedProcessor.hasTimerExpiredDuringBuzz()) {
@@ -646,6 +660,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
         points_earned: r.pointsEarned,
         cumulative_score: r.cumulativeScore,
       });
+      // US-018 CA-4/CA-5: play CORRECT_ANSWER or WRONG_ANSWER
+      sender.sendSystemSoundToBuzzer?.(r.participantOrder, r.correct ? "CORRECT_ANSWER" : "WRONG_ANSWER");
     }
 
     // CA-25 : send question_result_summary to admin
@@ -696,6 +712,8 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     } else {
       // CA-30 : dernière question → COMPLETED
       transitionState(db, game.GAM_ID, "QUESTION_CLOSED", "COMPLETED");
+      // US-018 CA-8: play GAME_END on all buzzers
+      sender.broadcastSystemSound?.("GAME_END");
     }
 
     return okResult();
