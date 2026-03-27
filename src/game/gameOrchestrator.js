@@ -90,6 +90,16 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
   }
 
   // ── trigger_title (MCQ: CA-4 to CA-7; SPEED: US-012 CA-4 to CA-7) ────
+  //
+  // ASYMMETRY: Angular sends the same message for both MCQ and SPEED, but the
+  // server auto-detects the question type and responds with different messages:
+  //   - MCQ: broadcasts "question_title" → Angular enters QUESTION_TITLE state
+  //   - SPEED: broadcasts "question_open" → Angular enters QUESTION_OPEN state
+  //
+  // This is intentional: the client should NOT expect a specific message type;
+  // instead, it should be prepared to handle both "question_title" and
+  // "question_open" responses to the same trigger_title action. See US-012
+  // section "Asymétrie des réponses à trigger_title — MCQ vs SPEED" for details.
 
   function handleTriggerTitle() {
     const game = loadActiveGame();
@@ -122,6 +132,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     transitionState(db, game.GAM_ID, "OPEN", "QUESTION_TITLE");
 
     // Broadcast question_title (US-011 CA-5)
+    // Note: Angular client should NOT expect this message for SPEED questions
     sender.broadcast({
       type: "question_title",
       question_index: game.GAM_CURRENT_QUESTION_INDEX,
