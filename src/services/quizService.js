@@ -260,10 +260,10 @@ export function deleteQuizById(db, id) {
 
   // CA-31/CA-32 : Garde QUIZ_IN_USE (US-008 CA-31, activée en US-010)
   // Vérifier qu'aucune partie active ne référence ce quiz
-  // Une partie est active si son statut est 'PENDING' ou 'OPEN'
+  // Une partie est active si son statut n'est pas 'COMPLETED' ou 'IN_ERROR' (cf. US-011)
   const activeGame = db.prepare(`
     SELECT COUNT(*) as count FROM T_GAME_GAM
-    WHERE GAM_QUIZ_ID = ? AND GAM_STATUS IN ('PENDING', 'OPEN')
+    WHERE GAM_QUIZ_ID = ? AND GAM_STATUS NOT IN ('COMPLETED', 'IN_ERROR')
   `).get(id);
 
   if (activeGame.count > 0) {
