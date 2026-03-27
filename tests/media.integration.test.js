@@ -20,7 +20,7 @@ import jwt from "jsonwebtoken";
 import request from "supertest";
 
 const JWT_SECRET = "a".repeat(32);
-const config = { jwtSecret: JWT_SECRET, jwtExpiration: 3600 };
+const CONFIG = { jwtSecret: JWT_SECRET, jwtExpiration: 3600 };
 
 let db, server, adminToken, userToken, themeId, questionId, uploadsDir;
 
@@ -100,29 +100,34 @@ function createAudioBuffer() {
 }
 
 beforeEach(async () => {
+  // Create fresh DB for each test
   db = openDatabase(":memory:");
   db.prepare(
     "INSERT INTO T_THEME_THM (THM_ID, THM_NAME, THM_CREATED_AT) VALUES (?, ?, ?)"
   ).run("018e4f5a-8c3b-7d2e-9f1a-4b5c6d7e8f9a", "Science", "2026-03-09T10:00:00.000Z");
   themeId = "018e4f5a-8c3b-7d2e-9f1a-4b5c6d7e8f9a";
 
-  // Create temporary uploads directory
+  // Create fresh uploads directory
   uploadsDir = await fs.mkdtemp(path.join(os.tmpdir(), "quiz-buzzer-test-"));
 
+  // Create fresh middleware for each test
   const authenticate = createAuthenticateMiddleware(JWT_SECRET);
   const authorize = createAuthorizeMiddleware("admin");
   const rateLimiter = new RateLimiter(100, 60_000);
 
-  const questionsCollectionHandler = createQuestionsCollectionHandler(db, config, authenticate, authorize, rateLimiter);
-  const questionResourceHandler = createQuestionResourceHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir);
-  const themesCollectionHandler = createThemesCollectionHandler(db, config, authenticate, authorize, rateLimiter);
-  const themeResourceHandler = createThemeResourceHandler(db, config, authenticate, authorize, rateLimiter);
-  const mediaUploadHandler = createMediaUploadHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir);
-  const mediaDeleteHandler = createMediaDeleteHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir);
+  // Create fresh handlers for each test
+  const questionsCollectionHandler = createQuestionsCollectionHandler(db, CONFIG, authenticate, authorize, rateLimiter);
+  const questionResourceHandler = createQuestionResourceHandler(db, CONFIG, authenticate, authorize, rateLimiter, uploadsDir);
+  const themesCollectionHandler = createThemesCollectionHandler(db, CONFIG, authenticate, authorize, rateLimiter);
+  const themeResourceHandler = createThemeResourceHandler(db, CONFIG, authenticate, authorize, rateLimiter);
+  const mediaUploadHandler = createMediaUploadHandler(db, CONFIG, authenticate, authorize, rateLimiter, uploadsDir);
+  const mediaDeleteHandler = createMediaDeleteHandler(db, CONFIG, authenticate, authorize, rateLimiter, uploadsDir);
 
+  // Create fresh tokens for each test
   adminToken = makeToken("admin");
   userToken = makeToken("buzzer");
 
+  // Create fresh server for each test
   server = createServer((req, res) => {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
@@ -153,7 +158,7 @@ beforeEach(async () => {
     }
   });
 
-  // Start server and wait for it to be listening
+  // Start server and wait
   await new Promise((resolve) => {
     server.listen(0, resolve);
   });
