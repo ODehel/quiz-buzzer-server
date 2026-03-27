@@ -62,13 +62,24 @@ const SCHEMA = `
   --
   -- REMARQUE IMPORTANTE — Initialisation préventive des états dans le CHECK:
   -- La contrainte CHECK sur GAM_STATUS inclut TOUS les états de la machine à états complète,
-  -- initialisés d'emblée pour éviter deux recréations destructives de table lors des migrations
-  -- ultérieures (ALT ER COLUMN n'est pas supporté par SQLite).
+  -- initialisés d'emblée pour éviter des recréations destructives de table lors des migrations
+  -- ultérieures (ALTER COLUMN n'est pas supporté par SQLite).
   --
-  -- États initialisés:
+  -- États définis (structure complète):
   -- - Partie (US-010): PENDING, OPEN, COMPLETED, IN_ERROR
-  -- - Question MCQ (US-011): QUESTION_TITLE, QUESTION_OPEN, QUESTION_CLOSED, QUESTION_BUZZED
-  -- - États SPEED (US-012): à documenter à la mise en œuvre
+  --   → Seuls ces états sont utilisés en US-010
+  --   → Transitions: PENDING→OPEN→COMPLETED (ou PENDING/OPEN→IN_ERROR côté serveur)
+  --
+  -- - Question MCQ (US-011): QUESTION_TITLE, QUESTION_OPEN, QUESTION_CLOSED
+  --   → Activés dans le workflow MCQ de US-011
+  --   → Transitions: OPEN→QUESTION_TITLE→QUESTION_OPEN→QUESTION_CLOSED→OPEN/COMPLETED
+  --
+  -- - Question SPEED (US-012): QUESTION_OPEN, QUESTION_BUZZED, QUESTION_CLOSED
+  --   → Activés dans le workflow SPEED de US-012
+  --   → Transitions: OPEN→QUESTION_OPEN⇄QUESTION_BUZZED→QUESTION_CLOSED→OPEN/COMPLETED
+  --
+  -- Voir US-010 (diagramme de machine à états), US-011 et US-012 pour la documentation
+  -- complète des workflows et transitions.
   CREATE TABLE IF NOT EXISTS T_GAME_GAM
   (
       GAM_ID                      TEXT PRIMARY KEY,
