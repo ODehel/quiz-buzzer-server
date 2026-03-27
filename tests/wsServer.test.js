@@ -41,6 +41,14 @@ function makeExpiredToken(sub, role) {
   );
 }
 
+function makeTokenWithShortExpiry(sub, role, expiresInSeconds) {
+  return jwt.sign(
+    { sub, role },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: expiresInSeconds }
+  );
+}
+
 async function startTestServer(db, opts = {}) {
   const server = createServer();
   const wss = attachWebSocket(server, db, JWT_SECRET, {
@@ -545,6 +553,28 @@ describe("attachWebSocket — successful authentication", () => {
     expect(msg.expires_in).toBeDefined();
     expect(typeof msg.expires_in).toBe("number");
     expect(msg.expires_in).toBeGreaterThan(0);
+  });
+
+  it("should calculate expires_in dynamically based on token expiration, not token age", async () => {
+    // Create a token that expires in 4 seconds
+    const token = makeTokenWithShortExpiry("buzzer-001", "buzzer", 4);
+
+    // Wait 1 second to ensure the token is not fresh
+    await new Promise((r) => setTimeout(r, 1000));
+
+    // Now authenticate with the "aged" token
+    const ws = await connectWs(server);
+    const msgPromise = waitForMessage(ws);
+    sendAuth(ws, token);
+    const msg = await msgPromise;
+
+    // expires_in should be ~3 seconds (4 - 1), not 4
+    expect(msg.type).toBe("auth_success");
+    expect(msg.expires_in).toBeDefined();
+    expect(typeof msg.expires_in).toBe("number");
+    // Allow small variance for execution time
+    expect(msg.expires_in).toBeGreaterThanOrEqual(2);
+    expect(msg.expires_in).toBeLessThanOrEqual(4);
   });
 
   it("CA-19: should log WEBSOCKET_AUTHENTICATED with summary for buzzer", async () => {
