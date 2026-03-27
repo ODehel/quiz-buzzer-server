@@ -5,6 +5,7 @@ import { logInfo, logWarn, logError } from "../utils/logger.js";
 import { createGameOrchestrator } from "../game/gameOrchestrator.js";
 import { findActiveGame } from "../repositories/gameanswerRepository.js";
 import { findParticipantsByGameId } from "../repositories/gameRepository.js";
+import { findSoundById } from "../repositories/soundRepository.js";
 import { RateLimiter } from "../middlewares/rateLimiter.js";
 import { startHeartbeat, stopHeartbeat } from "./ws-heartbeat.js";
 
@@ -46,6 +47,7 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
   wsRateLimitWindowMs = WS_RATE_LIMIT_WINDOW_MS,
   orchestratorOptions = {},
   heartbeatOptions = {},
+  serverBaseUrl = "",
 } = {}) {
   const wss = new WebSocketServer({ noServer: true });
 
@@ -180,6 +182,17 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       return;
     }
 
+    // Handle play_sound (US-017 CA-22 to CA-30)
+    if (type === "play_sound") {
+      // CA-26: buzzer cannot send play_sound
+      if (role === "buzzer") {
+        logWarn("GAME_MESSAGE_IGNORED", { reason: "Role not allowed to send this message type", role, type, sub });
+        return;
+      }
+      handlePlaySound(msg, ws);
+      return;
+    }
+
     // CA-40: fully unknown type (neither admin nor buzzer message) → ignore, WARN
     if (!ADMIN_MESSAGE_TYPES.has(type) && !BUZZER_MESSAGE_TYPES.has(type)) {
       logWarn("GAME_MESSAGE_IGNORED", { reason: "Unknown type", type, sub });
@@ -273,6 +286,106 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         });
       }
     }
+  }
+
+  // ── Play sound handler (US-017) ──────────────────────────────────────────
+
+  /**
+   * Handles the play_sound message from admin (CA-22 to CA-30).
+   *
+   * @param {Object} msg - Parsed message
+   * @param {import("ws").WebSocket} ws - Admin's WebSocket
+   */
+  function handlePlaySound(msg, ws) {
+    // CA-28: Validate sound_id
+    if (!msg.sound_id || typeof msg.sound_id !== "string") {
+      sendJson(ws, {
+        type: "error",
+        code: "INVALID_MESSAGE",
+        message: "Missing or invalid field: sound_id.",
+      });
+      return;
+    }
+
+    // CA-25: Check sound exists in DB
+    const sound = findSoundById(db, msg.sound_id);
+    if (!sound) {
+      sendJson(ws, {
+        type: "error",
+        code: "SOUND_NOT_FOUND",
+        message: "The requested sound was not found.",
+      });
+      return;
+    }
+
+    // Build absolute URL (CA-29)
+    const absoluteUrl = `${serverBaseUrl}/uploads/sounds/${sound.SND_FILENAME}`;
+
+    const playSoundMsg = {
+      type: "play_sound_url",
+      sound_id: msg.sound_id,
+      url: absoluteUrl,
+    };
+
+    // Resolve targets
+    const targets = msg.targets;
+    const hasTargets = Array.isArray(targets) && targets.length > 0;
+
+    // Get all connected buzzers
+    const connectedBuzzers = [];
+    for (const entry of registry.values()) {
+      if (entry.role === "buzzer") {
+        connectedBuzzers.push(entry);
+      }
+    }
+
+    // CA-30: No buzzers connected
+    if (connectedBuzzers.length === 0) {
+      logInfo("SOUND_NO_TARGETS", { sound_id: msg.sound_id });
+      logInfo("SOUND_PLAYED", {
+        sound_id: msg.sound_id,
+        targets_requested: hasTargets ? targets.length : 0,
+        targets_reached: 0,
+      });
+      return;
+    }
+
+    // CA-23: No targets or empty array → broadcast to all buzzers
+    if (!hasTargets) {
+      for (const entry of connectedBuzzers) {
+        sendJson(entry.ws, playSoundMsg);
+      }
+      logInfo("SOUND_PLAYED", {
+        sound_id: msg.sound_id,
+        targets_requested: 0,
+        targets_reached: connectedBuzzers.length,
+      });
+      return;
+    }
+
+    // CA-22: Targeted delivery
+    let targetsReached = 0;
+    for (const username of targets) {
+      const targetEntry = connectedBuzzers.find(
+        (e) => e.username.toLowerCase() === username.toLowerCase()
+      );
+      if (targetEntry) {
+        sendJson(targetEntry.ws, playSoundMsg);
+        targetsReached++;
+      } else {
+        // CA-24: Target not connected → warn
+        logWarn("SOUND_TARGET_NOT_CONNECTED", {
+          sound_id: msg.sound_id,
+          username,
+        });
+      }
+    }
+
+    logInfo("SOUND_PLAYED", {
+      sound_id: msg.sound_id,
+      targets_requested: targets.length,
+      targets_reached: targetsReached,
+    });
   }
 
   // ── WebSocket lifecycle ───────────────────────────────────────────────────
