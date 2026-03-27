@@ -7,7 +7,7 @@ import { logInfo } from "../utils/logger.js";
 // Supported MIME types per media type
 const SUPPORTED_MIMES = {
   image: new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]),
-  audio: new Set(["audio/mpeg", "audio/wav", "audio/ogg"]),
+  audio: new Set(["audio/mpeg", "audio/wav", "audio/wave", "audio/ogg"]),
 };
 
 // Extension mapping for MIME types
@@ -18,6 +18,7 @@ const MIME_TO_EXT = {
   "image/webp": ".webp",
   "audio/mpeg": ".mp3",
   "audio/wav": ".wav",
+  "audio/wave": ".wav",
   "audio/ogg": ".ogg",
 };
 
