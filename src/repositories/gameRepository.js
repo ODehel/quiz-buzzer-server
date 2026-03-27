@@ -103,7 +103,7 @@ export function findAllGamesPaginated(db, page, limit) {
 }
 
 /**
- * Retourne le nombre de parties actives (PENDING ou OPEN).
+ * Retourne le nombre de parties actives (tous les états sauf COMPLETED ou IN_ERROR, cf. US-011).
  *
  * @param {import("better-sqlite3").Database} db
  * @returns {number}
@@ -112,7 +112,7 @@ export function countActiveGames(db) {
   return db
     .prepare(
       `SELECT COUNT(*) AS count FROM T_GAME_GAM
-       WHERE GAM_STATUS IN ('PENDING', 'OPEN')`
+       WHERE GAM_STATUS NOT IN ('COMPLETED', 'IN_ERROR')`
     )
     .get().count;
 }
