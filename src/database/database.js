@@ -58,17 +58,17 @@ const SCHEMA = `
       PRIMARY KEY (QQN_QUIZ_ID, QQN_ORDER)
   );
 
-  -- T_GAME_GAM: Table pour gérer l'état des parties
+  -- T_GAME_GAM: Table pour g\u00e9rer l'\u00e9tat des parties
   --
-  -- REMARQUE IMPORTANTE — Initialisation préventive des états dans le CHECK:
-  -- La contrainte CHECK sur GAM_STATUS inclut TOUS les états de la machine à états complète,
-  -- initialisés d'emblée pour éviter deux recréations destructives de table lors des migrations
-  -- ultérieures (ALT ER COLUMN n'est pas supporté par SQLite).
+  -- REMARQUE IMPORTANTE \u2014 Initialisation pr\u00e9ventive des \u00e9tats dans le CHECK:
+  -- La contrainte CHECK sur GAM_STATUS inclut TOUS les \u00e9tats de la machine \u00e0 \u00e9tats compl\u00e8te,
+  -- initialis\u00e9s d'embl\u00e9e pour \u00e9viter deux recr\u00e9ations destructives de table lors des migrations
+  -- ult\u00e9rieures (ALT ER COLUMN n'est pas support\u00e9 par SQLite).
   --
-  -- États initialisés:
+  -- \u00c9tats initialis\u00e9s:
   -- - Partie (US-010): PENDING, OPEN, COMPLETED, IN_ERROR
   -- - Question MCQ (US-011): QUESTION_TITLE, QUESTION_OPEN, QUESTION_CLOSED, QUESTION_BUZZED
-  -- - États SPEED (US-012): à documenter à la mise en œuvre
+  -- - \u00c9tats SPEED (US-012): \u00e0 documenter \u00e0 la mise en \u0153uvre
   CREATE TABLE IF NOT EXISTS T_GAME_GAM
   (
       GAM_ID                      TEXT PRIMARY KEY,
@@ -102,12 +102,21 @@ const SCHEMA = `
       GAA_CREATED_AT        TEXT    NOT NULL,
       UNIQUE (GAA_GAME_ID, GAA_QUESTION_ID, GAA_PARTICIPANT_ORDER)
   );
+
+  -- T_SOUND_SND: Catalogue des jingles (US-017)
+  CREATE TABLE IF NOT EXISTS T_SOUND_SND
+  (
+      SND_ID         TEXT PRIMARY KEY,
+      SND_NAME       TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      SND_FILENAME   TEXT NOT NULL UNIQUE,
+      SND_CREATED_AT TEXT NOT NULL
+  );
 `;
 
 /**
- * Ouvre (ou crée) une base SQLite et initialise le schéma.
+ * Ouvre (ou cr\u00e9e) une base SQLite et initialise le sch\u00e9ma.
  *
- * @param {string} [dbPath] - chemin du fichier DB (défaut : quiz-buzzer.db).
+ * @param {string} [dbPath] - chemin du fichier DB (d\u00e9faut : quiz-buzzer.db).
  *                             Passer ":memory:" pour les tests.
  * @returns {import("better-sqlite3").Database}
  */
