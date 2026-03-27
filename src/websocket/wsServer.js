@@ -8,6 +8,8 @@ import { findParticipantsByGameId } from "../repositories/gameRepository.js";
 import { findSoundById } from "../repositories/soundRepository.js";
 import { RateLimiter } from "../middlewares/rateLimiter.js";
 import { startHeartbeat, stopHeartbeat } from "./ws-heartbeat.js";
+import { SYSTEM_SOUNDS } from "../constants/systemSounds.js";
+import { broadcastSystemSoundToBuzzers, sendSystemSound } from "../utils/soundUtils.js";
 
 export const MAX_BUZZERS = 10;
 export const AUTH_TIMEOUT_MS = 60_000;
@@ -107,6 +109,39 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         }
       }
     },
+
+    /**
+     * Send a system sound to a specific buzzer (US-018 auto-triggers).
+     * Non-blocking: errors are caught and logged.
+     *
+     * @param {number} participantOrder
+     * @param {string} soundId
+     */
+    sendSystemSoundToBuzzer(participantOrder, soundId) {
+      const game = findActiveGame(db);
+      if (!game) return;
+
+      const participants = findParticipantsByGameId(db, game.GAM_ID);
+      const participant = participants.find((p) => p.GPA_ORDER === participantOrder);
+      if (!participant) return;
+
+      const targetName = participant.GPA_NAME.toLowerCase();
+      for (const entry of registry.values()) {
+        if (entry.role === "buzzer" && entry.username.toLowerCase() === targetName) {
+          sendSystemSound(entry.ws, soundId);
+          break;
+        }
+      }
+    },
+
+    /**
+     * Broadcast a system sound to all connected buzzers (US-018 auto-triggers).
+     *
+     * @param {string} soundId
+     */
+    broadcastSystemSound(soundId) {
+      broadcastSystemSoundToBuzzers(registry, soundId, "auto");
+    },
   };
 
   // ── Orchestrator ──────────────────────────────────────────────────────────
@@ -190,6 +225,17 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         return;
       }
       handlePlaySound(msg, ws);
+      return;
+    }
+
+    // Handle trigger_system_sound (US-018 CA-10 to CA-16)
+    if (type === "trigger_system_sound") {
+      // CA-15: buzzer cannot trigger system sounds → ignore silently
+      if (role === "buzzer") {
+        logWarn("GAME_MESSAGE_IGNORED", { reason: "Role not allowed to send this message type", role, type, sub });
+        return;
+      }
+      handleTriggerSystemSound(msg, ws);
       return;
     }
 
@@ -386,6 +432,80 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       targets_requested: targets.length,
       targets_reached: targetsReached,
     });
+  }
+
+  // ── Trigger system sound handler (US-018 CA-10 to CA-14) ───────────────────
+
+  /**
+   * Handles the trigger_system_sound message from admin.
+   *
+   * @param {Object} msg - Parsed message
+   * @param {import("ws").WebSocket} ws - Admin's WebSocket
+   */
+  function handleTriggerSystemSound(msg, ws) {
+    // CA-12: sound_id absent or empty
+    if (!msg.sound_id || typeof msg.sound_id !== "string") {
+      sendJson(ws, {
+        type: "error",
+        code: "INVALID_MESSAGE",
+        message: "Missing or invalid field: sound_id.",
+      });
+      return;
+    }
+
+    // CA-13: sound_id not in catalogue
+    if (!SYSTEM_SOUNDS.has(msg.sound_id)) {
+      sendJson(ws, {
+        type: "error",
+        code: "UNKNOWN_SYSTEM_SOUND",
+        message: "Unknown system sound identifier.",
+      });
+      return;
+    }
+
+    const targets = msg.targets;
+    const hasTargets = Array.isArray(targets) && targets.length > 0;
+
+    // CA-10: No targets → broadcast to all buzzers
+    if (!hasTargets) {
+      broadcastSystemSoundToBuzzers(registry, msg.sound_id, "manual");
+      return;
+    }
+
+    // CA-11: Targeted delivery
+    const connectedBuzzers = [];
+    for (const entry of registry.values()) {
+      if (entry.role === "buzzer") {
+        connectedBuzzers.push(entry);
+      }
+    }
+
+    let targetsReached = 0;
+    for (const username of targets) {
+      const targetEntry = connectedBuzzers.find(
+        (e) => e.username.toLowerCase() === username.toLowerCase()
+      );
+      if (targetEntry) {
+        sendSystemSound(targetEntry.ws, msg.sound_id);
+        targetsReached++;
+      } else {
+        // CA-14: target not connected → warn
+        logWarn("SYSTEM_SOUND_TARGET_NOT_CONNECTED", {
+          sound_id: msg.sound_id,
+          username,
+        });
+      }
+    }
+
+    if (targetsReached === 0) {
+      logInfo("SYSTEM_SOUND_NO_TARGETS", { sound_id: msg.sound_id, trigger: "manual" });
+    } else {
+      logInfo("SYSTEM_SOUND_SENT", {
+        sound_id: msg.sound_id,
+        trigger: "manual",
+        targets_reached: targetsReached,
+      });
+    }
   }
 
   // ── WebSocket lifecycle ───────────────────────────────────────────────────
@@ -596,6 +716,15 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       admin_connected: adminConnected(),
     };
   }
+
+  // Expose notification function for game state changes (CA-7, CA-8)
+  wss._notifyGameStateChange = (newStatus) => {
+    if (newStatus === "OPEN") {
+      broadcastSystemSoundToBuzzers(registry, "GAME_START", "auto");
+    } else if (newStatus === "COMPLETED") {
+      broadcastSystemSoundToBuzzers(registry, "GAME_END", "auto");
+    }
+  };
 
   return wss;
 }

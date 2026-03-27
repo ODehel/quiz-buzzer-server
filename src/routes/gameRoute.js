@@ -170,7 +170,7 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
  * @param {Function} authorize
  * @param {import("../middlewares/rateLimiter.js").RateLimiter} rateLimiter
  */
-export function createGameResourceHandler(db, config, authenticate, authorize, rateLimiter) {
+export function createGameResourceHandler(db, config, authenticate, authorize, rateLimiter, { onGameStatusChange } = {}) {
   return async (req, res, url) => {
     try {
       // CA-54 : Rate limiting
@@ -238,28 +238,30 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
       validateAllowedFields(body, ALLOWED_FIELDS_PUT_PATCH);
 
       if (req.method === "PUT") {
-        sendJson(
-          res,
-          200,
-          updateGame(db, id, {
-            status: body.status,
-            participants: body.participants,
-            quizId: body.quiz_id,
-          })
-        );
+        const result = updateGame(db, id, {
+          status: body.status,
+          participants: body.participants,
+          quizId: body.quiz_id,
+        });
+        // US-018 CA-7/CA-8: notify WebSocket layer of game state change
+        if (body.status) {
+          onGameStatusChange?.(body.status);
+        }
+        sendJson(res, 200, result);
         return;
       }
 
       // PATCH
-      sendJson(
-        res,
-        200,
-        patchGame(db, id, {
-          status: body.status,
-          participants: body.participants,
-          quizId: body.quiz_id,
-        })
-      );
+      const result = patchGame(db, id, {
+        status: body.status,
+        participants: body.participants,
+        quizId: body.quiz_id,
+      });
+      // US-018 CA-7/CA-8: notify WebSocket layer of game state change
+      if (body.status) {
+        onGameStatusChange?.(body.status);
+      }
+      sendJson(res, 200, result);
     } catch (err) {
       handleError(res, err);
     }

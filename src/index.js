@@ -82,11 +82,15 @@ const quizzesCollectionHandler = createQuizzesCollectionHandler(
 const quizResourceHandler = createQuizResourceHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
+// US-018: shared callback for game state changes (set by WebSocket server)
+const gameStateNotifier = { onGameStatusChange: null };
+
 const gamesCollectionHandler = createGamesCollectionHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const gameResourceHandler = createGameResourceHandler(
-  db, config, authenticate, authorize, apiRateLimiter
+  db, config, authenticate, authorize, apiRateLimiter,
+  { onGameStatusChange: (status) => gameStateNotifier.onGameStatusChange?.(status) }
 );
 const gameResultsHandler = createGameResultsHandler(
   db, config, authenticate, authorize, apiRateLimiter
@@ -235,4 +239,8 @@ function requestHandler(req, res) {
 }
 
 startServer({ port: config.port, requestHandler })
-  .then((server) => attachWebSocket(server, db, config.jwtSecret, { serverBaseUrl: config.serverBaseUrl }));
+  .then((server) => {
+    const wss = attachWebSocket(server, db, config.jwtSecret, { serverBaseUrl: config.serverBaseUrl });
+    // US-018 CA-7: wire game state changes to WebSocket notification
+    gameStateNotifier.onGameStatusChange = (status) => wss._notifyGameStateChange?.(status);
+  });
