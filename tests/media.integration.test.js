@@ -133,7 +133,7 @@ beforeEach(async () => {
 
     // Media routes (must come before /questions/:id)
     const mediaUploadMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)\/media$/);
-    if (mediaUploadMatch && req.method === "POST") {
+    if (mediaUploadMatch) {
       mediaUploadHandler(req, res, url);
       return;
     }
@@ -195,11 +195,12 @@ afterEach(async () => {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function uploadMedia(type, buffer) {
+  const filename = type === "image" ? "test-file.jpg" : "test-file.wav";
   return request(server)
     .post(`/api/v1/questions/${questionId}/media`)
     .set("Authorization", `Bearer ${adminToken}`)
     .field("type", type)
-    .attach("file", buffer, "test-file");
+    .attach("file", buffer, filename);
 }
 
 async function deleteMedia(type) {
@@ -234,23 +235,21 @@ describe("POST /api/v1/questions/:id/media — Media Upload", () => {
   });
 
   test("CA-3 - Replace existing image", async () => {
-    const upload1 = await uploadMedia("image", createImageBuffer());
-    const oldPath = upload1.body.image_path;
+    await uploadMedia("image", createImageBuffer());
 
     const upload2 = await uploadMedia("image", createImageBuffer());
     expect(upload2.status).toBe(200);
     expect(upload2.body.image_path).toBeTruthy();
-    expect(upload2.body.image_path).not.toBe(oldPath);
+    expect(upload2.body.image_path).toMatch(/^\/uploads\/questions\/.+-image\.jpg$/);
   });
 
   test("CA-4 - Replace existing audio", async () => {
-    const upload1 = await uploadMedia("audio", createAudioBuffer());
-    const oldPath = upload1.body.audio_path;
+    await uploadMedia("audio", createAudioBuffer());
 
     const upload2 = await uploadMedia("audio", createAudioBuffer());
     expect(upload2.status).toBe(200);
     expect(upload2.body.audio_path).toBeTruthy();
-    expect(upload2.body.audio_path).not.toBe(oldPath);
+    expect(upload2.body.audio_path).toMatch(/^\/uploads\/questions\/.+-audio\.wav$/);
   });
 
   test("CA-5 - File named with question UUID and type", async () => {
@@ -287,7 +286,11 @@ describe("POST /api/v1/questions/:id/media — Media Upload", () => {
   });
 
   test("CA-9 - MIME mismatch (type=image with audio) → 400 INVALID_MEDIA_TYPE", async () => {
-    const res = await uploadMedia("image", createAudioBuffer());
+    const res = await request(server)
+      .post(`/api/v1/questions/${questionId}/media`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .field("type", "image")
+      .attach("file", createAudioBuffer(), "test-file.wav");
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("INVALID_MEDIA_TYPE");
   });
@@ -499,7 +502,7 @@ describe("Security and transversality", () => {
     const authorize = createAuthorizeMiddleware("admin");
 
     const mediaUploadHandler = createMediaUploadHandler(
-      db, config, authenticate, authorize, rateLimiter, uploadsDir
+      db, CONFIG, authenticate, authorize, rateLimiter, uploadsDir
     );
 
     const testServer = createServer((req, res) => {

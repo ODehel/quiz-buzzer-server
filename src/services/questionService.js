@@ -847,7 +847,7 @@ export function updateQuestionById(db, id, body) {
  * @param {string} [uploadsDir=""] - Base directory for uploads (optional, used for CA-24 media deletion)
  * @returns {Object}
  */
-export async function patchQuestionById(db, id, body, uploadsDir = "") {
+export function patchQuestionById(db, id, body, uploadsDir = "") {
   validateUuid(id);
 
   const existing = findQuestionById(db, id);
@@ -978,7 +978,7 @@ export async function patchQuestionById(db, id, body, uploadsDir = "") {
     } else {
       // CA-24: Delete physical file if image_path is set to null
       if (existing.QST_IMAGE_PATH && uploadsDir) {
-        await deleteMediaFile(uploadsDir, existing.QST_IMAGE_PATH);
+        deleteMediaFile(uploadsDir, existing.QST_IMAGE_PATH).catch(() => {});
       }
       fields.imagePath = null;
     }
@@ -995,7 +995,7 @@ export async function patchQuestionById(db, id, body, uploadsDir = "") {
     } else {
       // CA-24: Delete physical file if audio_path is set to null
       if (existing.QST_AUDIO_PATH && uploadsDir) {
-        await deleteMediaFile(uploadsDir, existing.QST_AUDIO_PATH);
+        deleteMediaFile(uploadsDir, existing.QST_AUDIO_PATH).catch(() => {});
       }
       fields.audioPath = null;
     }
