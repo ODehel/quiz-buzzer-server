@@ -83,14 +83,18 @@ const quizResourceHandler = createQuizResourceHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 // US-018: shared callback for game state changes (set by WebSocket server)
-const gameStateNotifier = { onGameStatusChange: null };
+// Point de vigilance US-010: add onGameDeleted callback for cleaning up orchestrator state before SQL deletion
+const gameStateNotifier = { onGameStatusChange: null, onGameDeleted: null };
 
 const gamesCollectionHandler = createGamesCollectionHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const gameResourceHandler = createGameResourceHandler(
   db, config, authenticate, authorize, apiRateLimiter,
-  { onGameStatusChange: (status) => gameStateNotifier.onGameStatusChange?.(status) }
+  {
+    onGameStatusChange: (status) => gameStateNotifier.onGameStatusChange?.(status),
+    onGameDeleted: (gameId) => gameStateNotifier.onGameDeleted?.(gameId),
+  }
 );
 const gameResultsHandler = createGameResultsHandler(
   db, config, authenticate, authorize, apiRateLimiter
@@ -243,4 +247,6 @@ startServer({ port: config.port, requestHandler })
     const wss = attachWebSocket(server, db, config.jwtSecret, { serverBaseUrl: config.serverBaseUrl });
     // US-018 CA-7: wire game state changes to WebSocket notification
     gameStateNotifier.onGameStatusChange = (status) => wss._notifyGameStateChange?.(status);
+    // Point de vigilance US-010: wire game deletion to orchestrator cleanup
+    gameStateNotifier.onGameDeleted = (gameId) => wss._notifyGameDeleted?.(gameId);
   });

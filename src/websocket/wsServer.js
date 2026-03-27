@@ -726,5 +726,10 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     }
   };
 
+  // Point de vigilance US-010: nettoyage des ressources en mémoire avant suppression SQL
+  wss._notifyGameDeleted = (gameId) => {
+    orchestrator.cleanupGameState();
+  };
+
   return wss;
 }

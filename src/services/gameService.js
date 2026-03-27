@@ -366,16 +366,26 @@ export function patchGame(db, id, { status, participants, quizId: bodyQuizId }) 
  * Supprime une partie (CA-47 à CA-51).
  * La suppression en cascade est gérée par la contrainte FK ON DELETE CASCADE.
  *
+ * IMPORTANT (Point de vigilance US-010) : Si une fonction de nettoyage en mémoire
+ * est fournie via le callback `onBeforeDelete`, elle est exécutée AVANT la suppression SQL
+ * pour nettoyer les timers et l'état en mémoire et éviter les timers orphelins.
+ *
  * @param {import("better-sqlite3").Database} db
  * @param {string} id
+ * @param {Function} [onBeforeDelete] - Callback optionnel appelé avant suppression SQL avec l'ID de la partie
  */
-export function deleteGame(db, id) {
+export function deleteGame(db, id, onBeforeDelete) {
   // CA-50 : UUID valide
   validateUuid(id);
 
   // CA-49 : partie existante
   if (!findGameById(db, id)) {
     throw new AppError(404, "NOT_FOUND", "The requested game was not found.");
+  }
+
+  // Nettoyage en mémoire AVANT suppression SQL (point de vigilance US-010)
+  if (onBeforeDelete) {
+    onBeforeDelete(id);
   }
 
   deleteGameById(db, id);

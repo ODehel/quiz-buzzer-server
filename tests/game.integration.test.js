@@ -828,6 +828,32 @@ describe("DELETE /api/v1/games/:id", () => {
       .send({ extra: "data" });
     expect(res.status).toBe(204);
   });
+
+  it("Point de vigilance US-010: deletion of active game (OPEN state) cleans up orchestrator state", async () => {
+    // Transition game to OPEN state to simulate an active game
+    await request(server)
+      .put(`/api/v1/games/${gameId}`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .set("Content-Type", "application/json")
+      .send({ status: "OPEN", participants: ["Alice", "Bob"] });
+
+    // Delete the active game — should cleanup timers before SQL deletion
+    const res = await request(server)
+      .delete(`/api/v1/games/${gameId}`)
+      .set("Authorization", `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(204);
+
+    // Verify game is deleted from database
+    const deletedGame = db.prepare("SELECT * FROM T_GAME_GAM WHERE GAM_ID = ?").get(gameId);
+    expect(deletedGame).toBeUndefined();
+
+    // Verify participants are cascaded deleted
+    const participantCount = db.prepare(
+      "SELECT COUNT(*) AS count FROM T_GAME_PARTICIPANT_GPA WHERE GPA_GAME_ID = ?"
+    ).get(gameId).count;
+    expect(participantCount).toBe(0);
+  });
 });
 
 // ─── Sécurité et transversalité ───────────────────────────────────────────────
