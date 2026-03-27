@@ -84,7 +84,7 @@ export async function uploadMedia(db, questionId, mediaType, file, uploadsDir) {
   const absolutePath = path.join(uploadsDir, "questions", filename);
 
   // Delete old file if it exists
-  const oldMediaField = `${mediaType}_path`;
+  const oldMediaField = mediaType === "image" ? "QST_IMAGE_PATH" : "QST_AUDIO_PATH";
   const oldMediaPath = question[oldMediaField];
   if (oldMediaPath) {
     await deleteMediaFile(uploadsDir, oldMediaPath);
@@ -144,7 +144,7 @@ export async function deleteMedia(db, questionId, mediaType, uploadsDir) {
   }
 
   // Check if media exists
-  const mediaField = `${mediaType}_path`;
+  const mediaField = mediaType === "image" ? "QST_IMAGE_PATH" : "QST_AUDIO_PATH";
   const mediaPath = question[mediaField];
   if (!mediaPath) {
     throw new AppError(

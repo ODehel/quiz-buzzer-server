@@ -561,4 +561,69 @@ describe("Media Upload and Management (Simplified)", () => {
     await fs.rm(uploadsDir, { recursive: true, force: true });
   });
 
+  test("CA-9 - File size limit (over 10MB) returns 413", async () => {
+    const db = openDatabase(":memory:");
+    db.prepare("INSERT INTO T_THEME_THM VALUES (?,?,?,?)").run(
+      "018e4f5a-8c3b-7d2e-9f1a-4b5c6d7e8f9a", "Science", "2026-03-09T10:00:00.000Z", null
+    );
+
+    const uploadsDir = await fs.mkdtemp(path.join(os.tmpdir(), "test-"));
+    const authenticate = createAuthenticateMiddleware(JWT_SECRET);
+    const authorize = createAuthorizeMiddleware("admin");
+    const rateLimiter = new RateLimiter(100, 60_000);
+
+    const questionsHandler = createQuestionsCollectionHandler(db, CONFIG, authenticate, authorize, rateLimiter);
+    const mediaUploadHandler = createMediaUploadHandler(db, CONFIG, authenticate, authorize, rateLimiter, uploadsDir);
+
+    const server = createServer((req, res) => {
+      const url = new URL(req.url, `http://${req.headers.host}`);
+      const mediaMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)\/media$/);
+      if (mediaMatch && req.method === "POST") {
+        mediaUploadHandler(req, res, url);
+      } else if (url.pathname === "/api/v1/questions") {
+        questionsHandler(req, res, url);
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+
+    await new Promise(resolve => server.listen(0, resolve));
+
+    const adminToken = jwt.sign(
+      { sub: "018e4f5a-8c3b-7d2e-9f1a-000000000001", role: "admin" },
+      JWT_SECRET,
+      { algorithm: "HS256", expiresIn: 3600 }
+    );
+
+    const qres = await request(server)
+      .post("/api/v1/questions")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({
+        type: "MCQ",
+        theme_id: "018e4f5a-8c3b-7d2e-9f1a-4b5c6d7e8f9a",
+        title: "Large file test",
+        choices: ["A", "B", "C", "D"],
+        correct_answer: "A",
+        level: 1,
+        time_limit: 30,
+        points: 10,
+      });
+
+    const questionId = qres.body.id;
+    const largeBuffer = Buffer.alloc(11 * 1024 * 1024);
+
+    const ures = await request(server)
+      .post(`/api/v1/questions/${questionId}/media`)
+      .set("Authorization", `Bearer ${adminToken}`)
+      .field("type", "image")
+      .attach("file", largeBuffer, "large.jpg");
+
+    expect(ures.status).toBe(413);
+    expect(ures.body.error).toBe("FILE_TOO_LARGE");
+
+    server.close();
+    db.close();
+    await fs.rm(uploadsDir, { recursive: true, force: true });
+  });
+
 });
