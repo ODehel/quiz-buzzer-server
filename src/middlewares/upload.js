@@ -60,12 +60,13 @@ function validateMimeTypeMatch(mimeType, mediaType) {
  */
 export async function parseMultipartFormData(req) {
   return new Promise((resolve, reject) => {
-    const bb = Busboy({ headers: req.headers });
+    const bb = Busboy({ headers: req.headers, limits: { fileSize: MAX_FILE_SIZE } });
     let fileField = null;
     let typeField = null;
     let fileBuffer = null;
     let fileMimetype = null;
     let fileSize = 0;
+    let fileTruncated = false;
 
     bb.on("file", (fieldname, file, info) => {
       if (fieldname === "file") {
@@ -76,16 +77,16 @@ export async function parseMultipartFormData(req) {
         file.on("data", (data) => {
           chunks.push(data);
           fileSize += data.length;
+        });
 
-          // Check file size limit during streaming
-          if (fileSize > MAX_FILE_SIZE) {
-            file.destroy();
-            reject(new AppError(413, "FILE_TOO_LARGE", "File size exceeds the 10MB limit."));
-          }
+        file.on("limit", () => {
+          fileTruncated = true;
         });
 
         file.on("end", () => {
-          fileBuffer = Buffer.concat(chunks);
+          if (!fileTruncated) {
+            fileBuffer = Buffer.concat(chunks);
+          }
         });
 
         file.on("error", (err) => {
@@ -102,6 +103,11 @@ export async function parseMultipartFormData(req) {
 
     bb.on("close", () => {
       try {
+        // Check file size limit (truncation by Busboy limits)
+        if (fileTruncated) {
+          throw new AppError(413, "FILE_TOO_LARGE", "File size exceeds the 10MB limit.");
+        }
+
         // Validate file field
         if (!fileField) {
           throw new AppError(
