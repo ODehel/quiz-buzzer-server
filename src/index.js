@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadEnv } from "./config/env.js";
 import { openDatabase } from "./database/database.js";
 import { RateLimiter } from "./middlewares/rateLimiter.js";
@@ -12,9 +14,12 @@ import {
   createQuestionsCollectionHandler,
   createQuestionResourceHandler,
   createQuestionsBulkHandler,
+  createMediaUploadHandler,
+  createMediaDeleteHandler,
 } from "./routes/questionRoute.js";
 import { startServer } from "./server.js";
 import { attachWebSocket } from "./websocket/wsServer.js";
+import { ensureUploadsDirectory } from "./middlewares/upload.js";
 import {
   createQuizzesCollectionHandler,
   createQuizResourceHandler,
@@ -25,8 +30,15 @@ import {
   createGameResultsHandler,
 } from "./routes/gameRoute.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(__dirname, "..", "uploads");
+
 const config = loadEnv();
 const db = openDatabase();
+
+// Initialize uploads directory (CA-5)
+await ensureUploadsDirectory(uploadsDir);
 
 // Middlewares réutilisables (DRY — CA-32, CA-33 / CA-80, CA-81)
 const authenticate = createAuthenticateMiddleware(config.jwtSecret);
@@ -51,7 +63,13 @@ const questionsBulkHandler = createQuestionsBulkHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
 const questionResourceHandler = createQuestionResourceHandler(
-  db, config, authenticate, authorize, apiRateLimiter
+  db, config, authenticate, authorize, apiRateLimiter, uploadsDir
+);
+const mediaUploadHandler = createMediaUploadHandler(
+  db, config, authenticate, authorize, apiRateLimiter, uploadsDir
+);
+const mediaDeleteHandler = createMediaDeleteHandler(
+  db, config, authenticate, authorize, apiRateLimiter, uploadsDir
 );
 const quizzesCollectionHandler = createQuizzesCollectionHandler(
   db, config, authenticate, authorize, apiRateLimiter
@@ -102,6 +120,20 @@ function requestHandler(req, res) {
   // Routes questions — insertion en lot (AVANT /:id pour éviter que "bulk" soit interprété comme un ID)
   if (url.pathname === "/api/v1/questions/bulk") {
     questionsBulkHandler(req, res);
+    return;
+  }
+
+  // Routes médias — upload (/api/v1/questions/:id/media) — POST
+  const mediaUploadMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)\/media$/);
+  if (mediaUploadMatch && req.method === "POST") {
+    mediaUploadHandler(req, res, url);
+    return;
+  }
+
+  // Routes médias — suppression (/api/v1/questions/:id/media/:type) — DELETE
+  const mediaDeleteMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)\/media\/([^/]+)$/);
+  if (mediaDeleteMatch && req.method === "DELETE") {
+    mediaDeleteHandler(req, res, url);
     return;
   }
 

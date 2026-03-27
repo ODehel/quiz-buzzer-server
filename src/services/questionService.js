@@ -10,6 +10,7 @@ import {
   updateQuestion,
   deleteQuestion,
 } from "../repositories/questionRepository.js";
+import { deleteMediaFile } from "./mediaService.js";
 
 /** Regex de validation UUID */
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -843,9 +844,10 @@ export function updateQuestionById(db, id, body) {
  * @param {import("better-sqlite3").Database} db
  * @param {string} id
  * @param {Object} body
+ * @param {string} [uploadsDir=""] - Base directory for uploads (optional, used for CA-24 media deletion)
  * @returns {Object}
  */
-export function patchQuestionById(db, id, body) {
+export async function patchQuestionById(db, id, body, uploadsDir = "") {
   validateUuid(id);
 
   const existing = findQuestionById(db, id);
@@ -965,7 +967,7 @@ export function patchQuestionById(db, id, body) {
     fields.points = validateIntRange(body.points, "points", 1, 50);
   }
 
-  // image_path (CA-68)
+  // image_path (CA-68, CA-24: delete file if set to null)
   if ("image_path" in body) {
     const val = body.image_path;
     if (val !== null) {
@@ -974,11 +976,15 @@ export function patchQuestionById(db, id, body) {
       }
       fields.imagePath = val;
     } else {
+      // CA-24: Delete physical file if image_path is set to null
+      if (existing.QST_IMAGE_PATH && uploadsDir) {
+        await deleteMediaFile(uploadsDir, existing.QST_IMAGE_PATH);
+      }
       fields.imagePath = null;
     }
   }
 
-  // audio_path (CA-69)
+  // audio_path (CA-69, CA-24: delete file if set to null)
   if ("audio_path" in body) {
     const val = body.audio_path;
     if (val !== null) {
@@ -987,6 +993,10 @@ export function patchQuestionById(db, id, body) {
       }
       fields.audioPath = val;
     } else {
+      // CA-24: Delete physical file if audio_path is set to null
+      if (existing.QST_AUDIO_PATH && uploadsDir) {
+        await deleteMediaFile(uploadsDir, existing.QST_AUDIO_PATH);
+      }
       fields.audioPath = null;
     }
   }
