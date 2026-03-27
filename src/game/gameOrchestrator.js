@@ -89,6 +89,20 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     }
   }
 
+  /**
+   * Nettoie complètement l'état en mémoire de l'orchestrateur pour une partie supprimée.
+   * Arrête tous les timers et vide les références aux processeurs et à l'état du jeu.
+   * Appelé avant la suppression SQL pour éviter les timers orphelins.
+   * (Point de vigilance US-010 : suppression d'une partie en état actif)
+   */
+  function cleanupGameState() {
+    cleanupTimer();
+    currentProcessor = null;
+    currentSpeedProcessor = null;
+    participantNames = null;
+    currentQuestion = null;
+  }
+
   // ── trigger_title (MCQ: CA-4 to CA-7; SPEED: US-012 CA-4 to CA-7) ────
   //
   // ASYMMETRY: Angular sends the same message for both MCQ and SPEED, but the
@@ -813,5 +827,6 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     handleInvalidateAnswer,
     handleTriggerIntermediateRanking,
     recoverFromCrash,
+    cleanupGameState,
   };
 }

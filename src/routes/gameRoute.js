@@ -170,7 +170,7 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
  * @param {Function} authorize
  * @param {import("../middlewares/rateLimiter.js").RateLimiter} rateLimiter
  */
-export function createGameResourceHandler(db, config, authenticate, authorize, rateLimiter, { onGameStatusChange } = {}) {
+export function createGameResourceHandler(db, config, authenticate, authorize, rateLimiter, { onGameStatusChange, onGameDeleted } = {}) {
   return async (req, res, url) => {
     try {
       // CA-54 : Rate limiting
@@ -224,7 +224,8 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
         // Content-Type est ignoré sur DELETE
 
         // CA-51 : body éventuel ignoré silencieusement
-        deleteGame(db, id);
+        // Point de vigilance US-010 : passer callback pour nettoyage des timers en mémoire avant suppression SQL
+        deleteGame(db, id, onGameDeleted);
         res.writeHead(204);
         res.end();
         return;
