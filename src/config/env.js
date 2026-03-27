@@ -16,5 +16,6 @@ export function loadEnv(source = process.env) {
     jwtSecret,
     jwtExpiration: parseInt(source.JWT_EXPIRATION, 10) || 3600,
     port: parseInt(source.PORT, 10) || 3000,
+    serverBaseUrl: source.SERVER_BASE_URL || "",
   };
 }

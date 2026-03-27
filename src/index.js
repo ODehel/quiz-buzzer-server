@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./config/env.js";
 import { openDatabase } from "./database/database.js";
@@ -29,6 +30,10 @@ import {
   createGameResourceHandler,
   createGameResultsHandler,
 } from "./routes/gameRoute.js";
+import {
+  createSoundsCollectionHandler,
+  createSoundResourceHandler,
+} from "./routes/soundRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,6 +90,12 @@ const gameResourceHandler = createGameResourceHandler(
 );
 const gameResultsHandler = createGameResultsHandler(
   db, config, authenticate, authorize, apiRateLimiter
+);
+const soundsCollectionHandler = createSoundsCollectionHandler(
+  db, config, authenticate, authorize, apiRateLimiter, uploadsDir
+);
+const soundResourceHandler = createSoundResourceHandler(
+  db, config, authenticate, authorize, apiRateLimiter, uploadsDir
 );
 
 /**
@@ -177,6 +188,43 @@ function requestHandler(req, res) {
     return;
   }
 
+  // Serve static sound files (CA-29)
+  const soundFileMatch = url.pathname.match(/^\/uploads\/sounds\/([^/]+)$/);
+  if (soundFileMatch && req.method === "GET") {
+    const filename = soundFileMatch[1];
+    const filePath = path.join(uploadsDir, "sounds", filename);
+    const mimeMap = { ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg" };
+    const ext = path.extname(filename).toLowerCase();
+    const mime = mimeMap[ext];
+    if (!mime) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: 404, error: "NOT_FOUND", message: "The requested resource was not found." }));
+      return;
+    }
+    try {
+      const stat = fs.statSync(filePath);
+      res.writeHead(200, { "Content-Type": mime, "Content-Length": stat.size });
+      fs.createReadStream(filePath).pipe(res);
+    } catch {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: 404, error: "NOT_FOUND", message: "The requested resource was not found." }));
+    }
+    return;
+  }
+
+  // Routes sons — collection
+  if (url.pathname === "/api/v1/sounds") {
+    soundsCollectionHandler(req, res, url);
+    return;
+  }
+
+  // Routes sons — ressource individuelle (/api/v1/sounds/:id)
+  const soundMatch = url.pathname.match(/^\/api\/v1\/sounds\/([^/]+)$/);
+  if (soundMatch) {
+    soundResourceHandler(req, res, url);
+    return;
+  }
+
   // 404 pour toute autre route
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({
@@ -187,4 +235,4 @@ function requestHandler(req, res) {
 }
 
 startServer({ port: config.port, requestHandler })
-  .then((server) => attachWebSocket(server, db, config.jwtSecret));
+  .then((server) => attachWebSocket(server, db, config.jwtSecret, { serverBaseUrl: config.serverBaseUrl }));
