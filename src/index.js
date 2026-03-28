@@ -3,6 +3,10 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./config/env.js";
 import { openDatabase } from "./database/database.js";
+import { wrapDatabaseWithLogging } from "./database/sqlLogger.js";
+import { withCorrelationId } from "./middlewares/correlationId.js";
+import { withHttpLogger } from "./middlewares/httpLogger.js";
+import { cleanOldLogs } from "./utils/logCleaner.js";
 import { RateLimiter } from "./middlewares/rateLimiter.js";
 import { createAuthenticateMiddleware } from "./middlewares/authenticate.js";
 import { createAuthorizeMiddleware } from "./middlewares/authorize.js";
@@ -42,7 +46,7 @@ const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "..", "uploads");
 
 const config = loadEnv();
-const db = openDatabase();
+const db = wrapDatabaseWithLogging(openDatabase());
 
 // Initialize uploads directory (CA-5)
 await ensureUploadsDirectory(uploadsDir);
@@ -254,7 +258,16 @@ function requestHandler(req, res) {
 // US-019 CA-8: Reprise de partie interrompue AVANT l'ouverture des connexions
 recoverInterruptedGame(db);
 
-startServer({ port: config.port, requestHandler })
+// US-022 CA-29: nettoyage des fichiers de log > 7 jours AVANT l'ouverture des connexions
+// CA-15: pas de nettoyage en environnement test
+if (process.env.NODE_ENV !== "test") {
+  await cleanOldLogs();
+}
+
+// US-022: chaîne de middlewares — correlationId → httpLogger → requestHandler
+const enhancedHandler = withHttpLogger(withCorrelationId(requestHandler));
+
+startServer({ port: config.port, requestHandler: enhancedHandler })
   .then((server) => {
     const wss = attachWebSocket(server, db, config.jwtSecret, { serverBaseUrl: config.serverBaseUrl });
     // US-018 CA-7: wire game state changes to WebSocket notification

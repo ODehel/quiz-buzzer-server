@@ -4,6 +4,7 @@ export default {
   collectCoverageFrom: [
     "src/**/*.js",
     "!src/index.js",
+    "!src/config/logger.js",
   ],
   coverageThreshold: {
     global: {

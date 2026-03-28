@@ -23,6 +23,11 @@ export function sendJson(res, statusCode, body, headers = {}) {
  * @param {import("../errors/AppError.js").AppError} err
  * @param {Object} [headers={}]
  */
-export function sendError(res, err, headers = {}) {
-  sendJson(res, err.status, err.toJSON(), headers);
+export function sendError(res, err, headers = {}, req = null) {
+  const body = err.toJSON();
+  // CA-19: inclure correlation_id dans le body des erreurs 500
+  if (err.status === 500 && req?.correlationId) {
+    body.correlation_id = req.correlationId;
+  }
+  sendJson(res, err.status, body, headers);
 }

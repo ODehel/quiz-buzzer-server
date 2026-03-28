@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import { openDatabase } from "../src/database/database.js";
 import { syncGameStateOnConnect } from "../src/game/gameSync.js";
+import logger from "../src/config/logger.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ function createMockSend() {
 let logInfoSpy;
 
 beforeEach(() => {
-  logInfoSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+  logInfoSpy = jest.spyOn(logger, "info").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -265,11 +266,13 @@ describe("syncGameStateOnConnect — admin (game_state_sync)", () => {
 
     syncGameStateOnConnect(null, "admin", "admin_user", db, { sendFn: mock.fn });
 
-    const logCall = logInfoSpy.mock.calls.find((c) => c[0].includes("GAME_STATE_SYNC_SENT"));
+    const logCall = logInfoSpy.mock.calls.find((c) => c[0]?.event === "GAME_STATE_SYNC_SENT");
     expect(logCall).toBeDefined();
-    const logData = JSON.parse(logCall[0]);
-    expect(logData.game_id).toBe("gam-1");
-    expect(logData.status).toBe("OPEN");
+    expect(logCall[0]).toEqual(expect.objectContaining({
+      event: "GAME_STATE_SYNC_SENT",
+      game_id: "gam-1",
+      status: "OPEN",
+    }));
   });
 });
 
@@ -407,11 +410,13 @@ describe("syncGameStateOnConnect — buzzer (game_resumed)", () => {
 
     syncGameStateOnConnect(null, "buzzer", "Alice", db, { sendFn: mock.fn });
 
-    const logCall = logInfoSpy.mock.calls.find((c) => c[0].includes("GAME_RESUMED_SENT"));
+    const logCall = logInfoSpy.mock.calls.find((c) => c[0]?.event === "GAME_RESUMED_SENT");
     expect(logCall).toBeDefined();
-    const logData = JSON.parse(logCall[0]);
-    expect(logData.game_id).toBe("gam-1");
-    expect(logData.username).toBe("Alice");
+    expect(logCall[0]).toEqual(expect.objectContaining({
+      event: "GAME_RESUMED_SENT",
+      game_id: "gam-1",
+      username: "Alice",
+    }));
   });
 
   // Buzzer not a participant — still gets game_resumed with score 0

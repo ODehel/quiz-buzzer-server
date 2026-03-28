@@ -5,11 +5,13 @@
  */
 
 import { createServer } from "node:http";
+import { jest } from "@jest/globals";
 import { openDatabase } from "../src/database/database.js";
 import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { attachWebSocket } from "../src/websocket/wsServer.js";
 import { recoverInterruptedGame } from "../src/game/gameRecovery.js";
+import logger from "../src/config/logger.js";
 
 const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 
@@ -142,15 +144,23 @@ async function authenticate(ws, sub, role) {
   return msg;
 }
 
-function captureConsole() {
-  const captured = { log: [], warn: [], error: [] };
-  const origLog = console.log;
-  const origWarn = console.warn;
-  const origError = console.error;
-  console.log = (m) => captured.log.push(m);
-  console.warn = (m) => captured.warn.push(m);
-  console.error = (m) => captured.error.push(m);
-  return { captured, restore: () => { console.log = origLog; console.warn = origWarn; console.error = origError; } };
+function spyOnLogger() {
+  const spies = {
+    info: jest.spyOn(logger, "info").mockImplementation(() => {}),
+    warn: jest.spyOn(logger, "warn").mockImplementation(() => {}),
+    error: jest.spyOn(logger, "error").mockImplementation(() => {}),
+  };
+  const captured = {
+    get log() { return spies.info.mock.calls.map((c) => c[0]); },
+    get warn() { return spies.warn.mock.calls.map((c) => c[0]); },
+    get error() { return spies.error.mock.calls.map((c) => c[0]); },
+  };
+  const restore = () => {
+    spies.info.mockRestore();
+    spies.warn.mockRestore();
+    spies.error.mockRestore();
+  };
+  return { captured, restore };
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +172,7 @@ let captured, restore;
 
 beforeEach(async () => {
   db = createTestDb();
-  ({ captured, restore } = captureConsole());
+  ({ captured, restore } = spyOnLogger());
   ({ server, wss } = await startServer(db));
 });
 
@@ -184,7 +194,7 @@ describe("CA-42 — invalid JSON after auth", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 });
@@ -201,7 +211,7 @@ describe("CA-41 — unknown message type after auth", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 
@@ -213,7 +223,7 @@ describe("CA-41 — unknown message type after auth", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 
@@ -225,7 +235,7 @@ describe("CA-41 — unknown message type after auth", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 });
@@ -242,7 +252,7 @@ describe("CA-38 — buzzer sending admin-only message", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 
@@ -254,7 +264,7 @@ describe("CA-38 — buzzer sending admin-only message", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 
@@ -266,7 +276,7 @@ describe("CA-38 — buzzer sending admin-only message", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 
@@ -278,7 +288,7 @@ describe("CA-38 — buzzer sending admin-only message", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 });
@@ -295,7 +305,7 @@ describe("CA-39 — admin sending buzzer-only message", () => {
     await new Promise((r) => setTimeout(r, 30));
 
     expect(ws.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_MESSAGE_IGNORED")).toBe(true);
   });
 });
@@ -523,7 +533,7 @@ describe("answer handling", () => {
 
     // Connection still open, ignored silently
     expect(buzzerWs.readyState).toBe(WebSocket.OPEN);
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_ANSWER_IGNORED")).toBe(true);
   });
 
@@ -551,7 +561,7 @@ describe("answer handling", () => {
     strangerWs.send(JSON.stringify({ type: "answer", value: "A" }));
     await new Promise((r) => setTimeout(r, 30));
 
-    const warns = captured.warn.map((m) => JSON.parse(m));
+    const warns = captured.warn;
     expect(warns.some((w) => w.event === "GAME_ANSWER_IGNORED")).toBe(true);
   });
 });

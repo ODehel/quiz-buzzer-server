@@ -1,6 +1,8 @@
 import bcrypt from "bcrypt";
 import Database from "better-sqlite3";
+import { jest } from "@jest/globals";
 import { authenticate } from "../src/services/authService.js";
+import logger from "../src/config/logger.js";
 
 const TEST_CONFIG = {
   jwtSecret: "a-test-secret-that-is-at-least-32-characters-long!!",
@@ -24,8 +26,7 @@ function createTestDb() {
 
 describe("authService.authenticate", () => {
   let db;
-  let originalLog, originalWarn;
-  let capturedLogs, capturedWarns;
+  let logInfoSpy, logWarnSpy;
 
   beforeAll(async () => {
     db = createTestDb();
@@ -36,17 +37,13 @@ describe("authService.authenticate", () => {
   });
 
   beforeEach(() => {
-    capturedLogs = [];
-    capturedWarns = [];
-    originalLog = console.log;
-    originalWarn = console.warn;
-    console.log = (msg) => capturedLogs.push(msg);
-    console.warn = (msg) => capturedWarns.push(msg);
+    logInfoSpy = jest.spyOn(logger, "info").mockImplementation(() => {});
+    logWarnSpy = jest.spyOn(logger, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
-    console.log = originalLog;
-    console.warn = originalWarn;
+    logInfoSpy.mockRestore();
+    logWarnSpy.mockRestore();
   });
 
   afterAll(() => db.close());
@@ -80,25 +77,27 @@ describe("authService.authenticate", () => {
   it("CA-14: should log LOGIN_SUCCESS on successful authentication", async () => {
     await authenticate(db, TEST_CONFIG, "testadmin", "ValidPassword1!", "10.0.0.1");
 
-    expect(capturedLogs).toHaveLength(1);
-    const log = JSON.parse(capturedLogs[0]);
-    expect(log.level).toBe("INFO");
-    expect(log.event).toBe("LOGIN_SUCCESS");
-    expect(log.username).toBe("testadmin");
-    expect(log.ip).toBe("10.0.0.1");
-    expect(log).toHaveProperty("timestamp");
+    expect(logInfoSpy).toHaveBeenCalledTimes(1);
+    expect(logInfoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "LOGIN_SUCCESS",
+        username: "testadmin",
+        ip: "10.0.0.1",
+      })
+    );
   });
 
   // CA-15 : Les connexions échouées sont loggées
   it("CA-15: should log LOGIN_FAILURE on failed authentication", async () => {
     await authenticate(db, TEST_CONFIG, "testadmin", "WrongPassword!!", "10.0.0.2").catch(() => {});
 
-    expect(capturedWarns).toHaveLength(1);
-    const log = JSON.parse(capturedWarns[0]);
-    expect(log.level).toBe("WARN");
-    expect(log.event).toBe("LOGIN_FAILURE");
-    expect(log.username).toBe("testadmin");
-    expect(log.ip).toBe("10.0.0.2");
-    expect(log).toHaveProperty("timestamp");
+    expect(logWarnSpy).toHaveBeenCalledTimes(1);
+    expect(logWarnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: "LOGIN_FAILURE",
+        username: "testadmin",
+        ip: "10.0.0.2",
+      })
+    );
   });
 });

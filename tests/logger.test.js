@@ -1,52 +1,69 @@
+import { jest } from "@jest/globals";
+import logger from "../src/config/logger.js";
 import { logInfo, logWarn, logError } from "../src/utils/logger.js";
 
-describe("logger", () => {
-  let originalLog, originalWarn, originalError;
-  let captured;
+// =============================================================================
+// Legacy logger wrapper tests (utils/logger.js delegates to pino)
+// =============================================================================
+
+describe("logger utility (pino wrapper)", () => {
+  let infoSpy;
+  let warnSpy;
+  let errorSpy;
 
   beforeEach(() => {
-    captured = { log: [], warn: [], error: [] };
-    originalLog = console.log;
-    originalWarn = console.warn;
-    originalError = console.error;
-    console.log = (msg) => captured.log.push(msg);
-    console.warn = (msg) => captured.warn.push(msg);
-    console.error = (msg) => captured.error.push(msg);
+    infoSpy = jest.spyOn(logger, "info");
+    warnSpy = jest.spyOn(logger, "warn");
+    errorSpy = jest.spyOn(logger, "error");
   });
 
   afterEach(() => {
-    console.log = originalLog;
-    console.warn = originalWarn;
-    console.error = originalError;
+    infoSpy.mockRestore();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
-  it("logInfo should output structured JSON to console.log", () => {
+  it("logInfo should delegate to logger.info with event and data", () => {
     logInfo("TEST_EVENT", { key: "value" });
 
-    expect(captured.log).toHaveLength(1);
-    const parsed = JSON.parse(captured.log[0]);
-    expect(parsed.level).toBe("INFO");
-    expect(parsed.event).toBe("TEST_EVENT");
-    expect(parsed.key).toBe("value");
-    expect(parsed).toHaveProperty("timestamp");
+    expect(infoSpy).toHaveBeenCalledWith({
+      event: "TEST_EVENT",
+      key: "value",
+    });
   });
 
-  it("logWarn should output structured JSON to console.warn", () => {
+  it("logWarn should delegate to logger.warn with event and data", () => {
     logWarn("WARN_EVENT", { ip: "1.2.3.4" });
 
-    expect(captured.warn).toHaveLength(1);
-    const parsed = JSON.parse(captured.warn[0]);
-    expect(parsed.level).toBe("WARN");
-    expect(parsed.event).toBe("WARN_EVENT");
+    expect(warnSpy).toHaveBeenCalledWith({
+      event: "WARN_EVENT",
+      ip: "1.2.3.4",
+    });
   });
 
-  it("logError should output structured JSON to console.error", () => {
+  it("logError should delegate to logger.error with event and data", () => {
     logError("ERROR_EVENT", { message: "something broke" });
 
-    expect(captured.error).toHaveLength(1);
-    const parsed = JSON.parse(captured.error[0]);
-    expect(parsed.level).toBe("ERROR");
-    expect(parsed.event).toBe("ERROR_EVENT");
-    expect(parsed.message).toBe("something broke");
+    expect(errorSpy).toHaveBeenCalledWith({
+      event: "ERROR_EVENT",
+      message: "something broke",
+    });
+  });
+
+  it("logInfo should work with empty data object", () => {
+    logInfo("EMPTY_EVENT", {});
+
+    expect(infoSpy).toHaveBeenCalledWith({ event: "EMPTY_EVENT" });
+  });
+
+  it("logError should spread multiple data fields", () => {
+    logError("MULTI_FIELD", { a: 1, b: 2, c: "three" });
+
+    expect(errorSpy).toHaveBeenCalledWith({
+      event: "MULTI_FIELD",
+      a: 1,
+      b: 2,
+      c: "three",
+    });
   });
 });

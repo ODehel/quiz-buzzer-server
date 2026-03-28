@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { jest } from "@jest/globals";
 import { openDatabase } from "../src/database/database.js";
 import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
@@ -10,6 +11,7 @@ import {
   WS_CLOSE_AUTH_TIMEOUT,
   WS_CLOSE_SESSION_REPLACED,
 } from "../src/websocket/wsServer.js";
+import logger from "../src/config/logger.js";
 
 const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 const AUTH_TIMEOUT = 60; // ms — short for tests
@@ -106,24 +108,28 @@ async function authenticateWs(ws, sub, role) {
   return msgPromise;
 }
 
-function captureConsole() {
-  const captured = { log: [], warn: [], error: [] };
-  const origLog = console.log;
-  const origWarn = console.warn;
-  const origError = console.error;
-  console.log = (msg) => captured.log.push(msg);
-  console.warn = (msg) => captured.warn.push(msg);
-  console.error = (msg) => captured.error.push(msg);
+function spyOnLogger() {
+  const spies = {
+    info: jest.spyOn(logger, "info").mockImplementation(() => {}),
+    warn: jest.spyOn(logger, "warn").mockImplementation(() => {}),
+    error: jest.spyOn(logger, "error").mockImplementation(() => {}),
+  };
+  const captured = {
+    get log() { return spies.info.mock.calls.map((c) => c[0]); },
+    get warn() { return spies.warn.mock.calls.map((c) => c[0]); },
+    get error() { return spies.error.mock.calls.map((c) => c[0]); },
+  };
   const restore = () => {
-    console.log = origLog;
-    console.warn = origWarn;
-    console.error = origError;
+    spies.info.mockRestore();
+    spies.warn.mockRestore();
+    spies.error.mockRestore();
   };
   return { captured, restore };
 }
 
-function parseLogs(msgs) {
-  return msgs.map((m) => JSON.parse(m));
+function parseLogs(objs) {
+  // Logger spy already captures objects; return as-is
+  return objs;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +141,7 @@ describe("attachWebSocket — path filtering", () => {
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ restore } = captureConsole());
+    ({ restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -169,7 +175,7 @@ describe("attachWebSocket — WebSocket rate limiting", () => {
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     // Use lower rate limit for faster tests: 3 connections per 100ms
     ({ server, wss } = await startTestServer(db, {
       wsRateLimitConnections: 3,
@@ -229,7 +235,6 @@ describe("attachWebSocket — WebSocket rate limiting", () => {
     const warns = parseLogs(captured.warn);
     const log = warns.find((e) => e.event === "WEBSOCKET_RATE_LIMITED");
     expect(log).toBeDefined();
-    expect(log.level).toBe("WARN");
     expect(log).toHaveProperty("ip");
     expect(log.limit).toBe(3);
     expect(log.windowSeconds).toBe(0.1);
@@ -289,7 +294,7 @@ describe("attachWebSocket — connection logging", () => {
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -305,7 +310,6 @@ describe("attachWebSocket — connection logging", () => {
     const events = parseLogs(captured.log);
     const log = events.find((e) => e.event === "WEBSOCKET_CONNECTED");
     expect(log).toBeDefined();
-    expect(log.level).toBe("INFO");
     expect(log).toHaveProperty("ip");
     ws.terminate();
   });
@@ -320,7 +324,7 @@ describe("attachWebSocket — authentication timeout", () => {
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -343,7 +347,6 @@ describe("attachWebSocket — authentication timeout", () => {
     const warns = parseLogs(captured.warn);
     const log = warns.find((e) => e.event === "WEBSOCKET_AUTH_FAILED");
     expect(log).toBeDefined();
-    expect(log.level).toBe("WARN");
     expect(log.reason).toBe("Authentication timeout.");
     expect(log).toHaveProperty("ip");
   });
@@ -358,7 +361,7 @@ describe("attachWebSocket — auth message validation", () => {
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -421,7 +424,6 @@ describe("attachWebSocket — auth message validation", () => {
     const warns = parseLogs(captured.warn);
     const log = warns.find((e) => e.event === "WEBSOCKET_AUTH_FAILED");
     expect(log).toBeDefined();
-    expect(log.level).toBe("WARN");
     expect(log.reason).toBe("Invalid token.");
     expect(log).toHaveProperty("ip");
   });
@@ -436,7 +438,7 @@ describe("attachWebSocket — JWT verification", () => {
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -523,7 +525,7 @@ describe("attachWebSocket — successful authentication", () => {
     db = createTestDb();
     insertUser(db, { id: "buzzer-001", username: "quiz_buzzer_01", role: "buzzer" });
     insertUser(db, { id: "admin-001", username: "admin", role: "admin" });
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -583,7 +585,6 @@ describe("attachWebSocket — successful authentication", () => {
     const events = parseLogs(captured.log);
     const log = events.find((e) => e.event === "WEBSOCKET_AUTHENTICATED");
     expect(log).toBeDefined();
-    expect(log.level).toBe("INFO");
     expect(log.username).toBe("quiz_buzzer_01");
     expect(log.role).toBe("buzzer");
     expect(log.buzzers_connected).toBe(1);
@@ -624,7 +625,7 @@ describe("attachWebSocket — disconnection", () => {
   beforeEach(async () => {
     db = createTestDb();
     insertUser(db, { id: "buzzer-001", username: "quiz_buzzer_01", role: "buzzer" });
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -643,7 +644,6 @@ describe("attachWebSocket — disconnection", () => {
     const events = parseLogs(captured.log);
     const log = events.find((e) => e.event === "WEBSOCKET_DISCONNECTED");
     expect(log).toBeDefined();
-    expect(log.level).toBe("INFO");
     expect(log.username).toBe("quiz_buzzer_01");
     expect(log.role).toBe("buzzer");
     expect(log.buzzers_connected).toBe(0);
@@ -674,7 +674,7 @@ describe("attachWebSocket — session replacement", () => {
     insertUser(db, { id: "buzzer-001", username: "quiz_buzzer_01", role: "buzzer" });
     insertUser(db, { id: "admin-001", username: "admin", role: "admin" });
     insertUser(db, { id: "admin-002", username: "admin2", role: "admin" });
-    ({ restore } = captureConsole());
+    ({ restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -759,7 +759,7 @@ describe("attachWebSocket — connection limits", () => {
         role: "buzzer",
       });
     }
-    ({ restore } = captureConsole());
+    ({ restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -812,7 +812,7 @@ describe("attachWebSocket — internal error handling", () => {
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ captured, restore } = captureConsole());
+    ({ captured, restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -836,7 +836,7 @@ describe("attachWebSocket — internal error handling", () => {
     const errors = parseLogs(captured.error);
     const log = errors.find((e) => e.event === "INTERNAL_ERROR");
     expect(log).toBeDefined();
-    expect(log.level).toBe("ERROR");
+    // level is implicit: captured via error spy
   });
 
   it("CA-24: should log INTERNAL_ERROR when the WebSocket emits an error event", async () => {
@@ -853,7 +853,7 @@ describe("attachWebSocket — internal error handling", () => {
     const errors = parseLogs(captured.error);
     const log = errors.find((e) => e.event === "INTERNAL_ERROR");
     expect(log).toBeDefined();
-    expect(log.level).toBe("ERROR");
+    // level is implicit: captured via error spy
     expect(log.message).toBe("simulated socket error");
 
     ws.terminate();
@@ -876,7 +876,7 @@ describe("attachWebSocket — buzzer slot freed on disconnect (CA-14)", () => {
         role: "buzzer",
       });
     }
-    ({ restore } = captureConsole());
+    ({ restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
@@ -923,7 +923,7 @@ describe("attachWebSocket — unauthenticated client messages ignored (CA-22)", 
 
   beforeEach(async () => {
     db = createTestDb();
-    ({ restore } = captureConsole());
+    ({ restore } = spyOnLogger());
     ({ server, wss } = await startTestServer(db));
   });
 
