@@ -16,34 +16,6 @@ import logger from "../../src/config/logger.js";
 const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 
 // ---------------------------------------------------------------------------
-// Jest worker graceful-exit fix.
-//
-// 1. Timers: game timer, heartbeat, token refresh, and persistWithRetry all
-//    use raw setTimeout/setInterval.  Wrapping them with .unref() ensures
-//    surviving timers never block the worker from exiting.
-//
-// 2. IPC Pipe handles: Jest's ESM worker (--experimental-vm-modules) keeps
-//    IPC Pipe handles ref'd after all tests complete.  Unreffing them in
-//    afterAll lets the worker exit cleanly.
-// ---------------------------------------------------------------------------
-const _origSetTimeout = globalThis.setTimeout;
-const _origSetInterval = globalThis.setInterval;
-
-globalThis.setTimeout = (fn, ms, ...args) => _origSetTimeout(fn, ms, ...args).unref();
-globalThis.setInterval = (fn, ms, ...args) => _origSetInterval(fn, ms, ...args).unref();
-
-afterAll(() => {
-  globalThis.setTimeout = _origSetTimeout;
-  globalThis.setInterval = _origSetInterval;
-
-  for (const h of process._getActiveHandles()) {
-    if (h?._handle && typeof h._handle.hasRef === "function" && h._handle.hasRef()) {
-      h._handle.unref();
-    }
-  }
-});
-
-// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
