@@ -85,11 +85,27 @@ function makeToken(sub, role) {
   return jwt.sign({ sub, role }, JWT_SECRET, { algorithm: "HS256", expiresIn: 3600 });
 }
 
+// Timer helpers that call .unref() so leaked timers never block Jest exit
+function unrefSetTimeout(fn, ms) {
+  return setTimeout(fn, ms).unref();
+}
+function unrefSetInterval(fn, ms) {
+  return setInterval(fn, ms).unref();
+}
+
 async function startServer(db, opts = {}) {
   const server = createServer();
   const wss = attachWebSocket(server, db, JWT_SECRET, {
     authTimeoutMs: 100,
     orchestratorOptions: { retryOptions: { maxRetries: 3, baseDelayMs: 1 } },
+    heartbeatOptions: {
+      setIntervalFn: unrefSetInterval,
+      clearIntervalFn: clearInterval,
+    },
+    tokenTimerOptions: {
+      setTimeoutFn: unrefSetTimeout,
+      clearTimeoutFn: clearTimeout,
+    },
     ...opts,
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -99,17 +115,7 @@ async function startServer(db, opts = {}) {
 async function teardown(server, wss, sockets = []) {
   wss._notifyGameDeleted?.();
 
-  // Wait for server-side clients to fully close (triggers stopHeartbeat)
-  const serverClosePromises = [...wss.clients].map(
-    (client) =>
-      new Promise((resolve) => {
-        if (client.readyState === WebSocket.CLOSED) return resolve();
-        client.once("close", resolve);
-        client.terminate();
-      })
-  );
-
-  // Close all client-side WebSocket connections and wait for them to finish
+  // Terminate all client-side sockets and wait for close events
   const clientClosePromises = sockets.map(
     (ws) =>
       new Promise((resolve) => {
@@ -118,8 +124,13 @@ async function teardown(server, wss, sockets = []) {
         ws.terminate();
       })
   );
+  await Promise.all(clientClosePromises);
 
-  await Promise.all([...serverClosePromises, ...clientClosePromises]);
+  // Close the WebSocketServer (cleans up internal state and remaining clients)
+  await new Promise((resolve) => wss.close(resolve));
+
+  // Destroy all remaining TCP connections so server.close() can complete
+  server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
 }
 
