@@ -18,13 +18,15 @@ const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 // ---------------------------------------------------------------------------
 // Prevent leaked timers and sockets from blocking Jest worker exit.
 //
-// 1. All setTimeout/setInterval calls are wrapped with .unref() so that
-//    game timers, heartbeat intervals, token-refresh timeouts, and retry
-//    delays can never keep the Node.js event loop alive on their own.
+// All setTimeout/setInterval calls are wrapped with .unref() so that game
+// timers, heartbeat intervals, token-refresh timeouts, and retry delays can
+// never keep the event loop alive on their own.
 //
-// 2. After all tests, any remaining active handle whose underlying native
-//    resource (_handle) is still ref'd is unref'd — this covers TCP sockets
-//    and closed HTTP servers that Node.js retains after close()/destroy().
+// After all tests, a deferred (0 ms, unref'd) callback unrefs every remaining
+// active handle.  The callback fires *after* Jest's own post-test bookkeeping
+// for this file (result/coverage reporting) has completed — it only runs
+// because the lingering handles themselves keep the event loop alive long
+// enough.  Once the handles are unref'd, the worker can exit cleanly.
 // ---------------------------------------------------------------------------
 const _origSetTimeout = globalThis.setTimeout;
 const _origSetInterval = globalThis.setInterval;
@@ -36,13 +38,27 @@ afterAll(() => {
   globalThis.setTimeout = _origSetTimeout;
   globalThis.setInterval = _origSetInterval;
 
-  for (const h of process._getActiveHandles()) {
-    // Unref lingering native TCP/server handles from our tests, but skip
-    // handles that have no _handle (already fully closed).
-    if (h?._handle && typeof h._handle.unref === "function") {
-      h._handle.unref();
+  // Deferred: runs on the next event-loop turn, after Jest finishes processing
+  // this file's results.  Only unrefs TCP sockets and closed HTTP servers from
+  // our tests — Pipe handles (Jest IPC) are left alone to avoid crashing
+  // workers that Jest may reuse for other test files.
+  _origSetTimeout(() => {
+    for (const h of process._getActiveHandles()) {
+      const handleType = h?._handle?.constructor?.name;
+      // TCP sockets from WebSocket connections (not Pipe = Jest IPC)
+      if (handleType === "TCP" && typeof h.unref === "function") {
+        h.unref();
+      }
+      // Closed HTTP servers (listening=false, _handle already gone)
+      if (
+        h?.constructor?.name === "Server" &&
+        h.listening === false &&
+        typeof h.unref === "function"
+      ) {
+        h.unref();
+      }
     }
-  }
+  }, 0).unref();
 });
 
 // ---------------------------------------------------------------------------
