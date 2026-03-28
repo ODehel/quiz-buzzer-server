@@ -16,9 +16,15 @@ import logger from "../../src/config/logger.js";
 const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 
 // ---------------------------------------------------------------------------
-// Ensure every timer created in this worker is .unref()'d so that leaked
-// timers (game timer, heartbeat, token refresh, persistWithRetry, …) can
-// never prevent the Jest worker from exiting.
+// Jest worker graceful-exit fix.
+//
+// 1. Timers: game timer, heartbeat, token refresh, and persistWithRetry all
+//    use raw setTimeout/setInterval.  Wrapping them with .unref() ensures
+//    surviving timers never block the worker from exiting.
+//
+// 2. IPC Pipe handles: Jest's ESM worker (--experimental-vm-modules) keeps
+//    IPC Pipe handles ref'd after all tests complete.  Unreffing them in
+//    afterAll lets the worker exit cleanly.
 // ---------------------------------------------------------------------------
 const _origSetTimeout = globalThis.setTimeout;
 const _origSetInterval = globalThis.setInterval;
@@ -29,6 +35,12 @@ globalThis.setInterval = (fn, ms, ...args) => _origSetInterval(fn, ms, ...args).
 afterAll(() => {
   globalThis.setTimeout = _origSetTimeout;
   globalThis.setInterval = _origSetInterval;
+
+  for (const h of process._getActiveHandles()) {
+    if (h?._handle && typeof h._handle.hasRef === "function" && h._handle.hasRef()) {
+      h._handle.unref();
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -129,9 +141,17 @@ async function teardown(server, wss, sockets = []) {
   // Close the WebSocketServer (cleans up internal state and remaining clients)
   await new Promise((resolve) => wss.close(resolve));
 
-  // Destroy all remaining TCP connections so server.close() can complete
+  // Destroy all remaining TCP connections and close the server
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
+
+  // Node.js retains closed Server/Socket handles in the active handles list
+  // even after close()/destroy().  Unref our server so it cannot block exit.
+  server.unref();
+  // Destroy any lingering half-open client TCP sockets
+  for (const ws of sockets) {
+    if (ws._socket && !ws._socket.destroyed) ws._socket.destroy();
+  }
 }
 
 function connectWs(server) {
