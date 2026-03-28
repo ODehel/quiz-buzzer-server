@@ -114,137 +114,96 @@ const soundResourceHandler = createSoundResourceHandler(
 );
 
 /**
- * Routeur principal : dispatch les requêtes vers les handlers appropriés.
+ * OCP: Registre de routes — ajouter une route = ajouter une entrée.
+ *
+ * Chaque route est définie par :
+ * - path : chemin exact (string) ou pattern (RegExp)
+ * - method : filtre optionnel sur la méthode HTTP
+ * - handler : fonction (req, res, url) à appeler
+ *
+ * L'ordre est important : les routes plus spécifiques doivent précéder les plus génériques
+ * (ex: /questions/bulk avant /questions/:id, /games/:id/results avant /games/:id).
+ */
+const routes = [
+  // Public
+  { path: "/api/v1/health", handler: healthHandler },
+  { path: "/api/v1/token", handler: tokenHandler },
+
+  // Themes
+  { path: "/api/v1/themes", handler: themesCollectionHandler },
+  { path: /^\/api\/v1\/themes\/[^/]+$/, handler: themeResourceHandler },
+
+  // Questions — bulk avant /:id
+  { path: "/api/v1/questions/bulk", handler: questionsBulkHandler },
+  { path: /^\/api\/v1\/questions\/[^/]+\/media$/, method: "POST", handler: mediaUploadHandler },
+  { path: /^\/api\/v1\/questions\/[^/]+\/media\/[^/]+$/, method: "DELETE", handler: mediaDeleteHandler },
+  { path: "/api/v1/questions", handler: questionsCollectionHandler },
+  { path: /^\/api\/v1\/questions\/[^/]+$/, handler: questionResourceHandler },
+
+  // Quizzes
+  { path: "/api/v1/quizzes", handler: quizzesCollectionHandler },
+  { path: /^\/api\/v1\/quizzes\/[^/]+$/, handler: quizResourceHandler },
+
+  // Games — results avant /:id
+  { path: "/api/v1/games", handler: gamesCollectionHandler },
+  { path: /^\/api\/v1\/games\/[^/]+\/results$/, handler: gameResultsHandler },
+  { path: /^\/api\/v1\/games\/[^/]+$/, handler: gameResourceHandler },
+
+  // Sounds
+  { path: "/api/v1/sounds", handler: soundsCollectionHandler },
+  { path: /^\/api\/v1\/sounds\/[^/]+$/, handler: soundResourceHandler },
+];
+
+/**
+ * Sert les fichiers son statiques (CA-29).
+ */
+function serveSoundFile(req, res, url) {
+  const soundFileMatch = url.pathname.match(/^\/uploads\/sounds\/([^/]+)$/);
+  if (!soundFileMatch || req.method !== "GET") return false;
+
+  const filename = soundFileMatch[1];
+  const filePath = path.join(uploadsDir, "sounds", filename);
+  const mimeMap = { ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg" };
+  const ext = path.extname(filename).toLowerCase();
+  const mime = mimeMap[ext];
+
+  if (!mime) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: 404, error: "NOT_FOUND", message: "The requested resource was not found." }));
+    return true;
+  }
+
+  try {
+    const stat = fs.statSync(filePath);
+    res.writeHead(200, { "Content-Type": mime, "Content-Length": stat.size });
+    fs.createReadStream(filePath).pipe(res);
+  } catch {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: 404, error: "NOT_FOUND", message: "The requested resource was not found." }));
+  }
+  return true;
+}
+
+/**
+ * Routeur principal : dispatch les requêtes via le registre de routes.
  */
 function requestHandler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
-  // US-020 : Health check (public, sans authentification)
-  if (url.pathname === "/api/v1/health") {
-    healthHandler(req, res);
-    return;
-  }
+  // Recherche dans le registre de routes
+  for (const route of routes) {
+    const pathMatch = typeof route.path === "string"
+      ? url.pathname === route.path
+      : route.path.test(url.pathname);
 
-  if (url.pathname === "/api/v1/token") {
-    tokenHandler(req, res);
-    return;
-  }
-
-  // Routes thèmes — collection
-  if (url.pathname === "/api/v1/themes") {
-    themesCollectionHandler(req, res, url);
-    return;
-  }
-
-  // Routes thèmes — ressource individuelle (/api/v1/themes/:id)
-  const themeMatch = url.pathname.match(/^\/api\/v1\/themes\/([^/]+)$/);
-  if (themeMatch) {
-    themeResourceHandler(req, res, url);
-    return;
-  }
-
-  // Routes questions — collection
-  if (url.pathname === "/api/v1/questions") {
-    questionsCollectionHandler(req, res, url);
-    return;
-  }
-
-  // Routes questions — insertion en lot (AVANT /:id pour éviter que "bulk" soit interprété comme un ID)
-  if (url.pathname === "/api/v1/questions/bulk") {
-    questionsBulkHandler(req, res);
-    return;
-  }
-
-  // Routes médias — upload (/api/v1/questions/:id/media) — POST
-  const mediaUploadMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)\/media$/);
-  if (mediaUploadMatch && req.method === "POST") {
-    mediaUploadHandler(req, res, url);
-    return;
-  }
-
-  // Routes médias — suppression (/api/v1/questions/:id/media/:type) — DELETE
-  const mediaDeleteMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)\/media\/([^/]+)$/);
-  if (mediaDeleteMatch && req.method === "DELETE") {
-    mediaDeleteHandler(req, res, url);
-    return;
-  }
-
-  // Routes questions — ressource individuelle (/api/v1/questions/:id)
-  const questionMatch = url.pathname.match(/^\/api\/v1\/questions\/([^/]+)$/);
-  if (questionMatch) {
-    questionResourceHandler(req, res, url);
-    return;
-  }
-
-  // Routes quiz — collection
-  if (url.pathname === "/api/v1/quizzes") {
-    quizzesCollectionHandler(req, res, url);
-    return;
-  }
-
-  // Routes quiz — ressource individuelle (/api/v1/quizzes/:id)
-  const quizMatch = url.pathname.match(/^\/api\/v1\/quizzes\/([^/]+)$/);
-  if (quizMatch) {
-    quizResourceHandler(req, res, url);
-    return;
-  }
-
-  // Routes parties — collection
-  if (url.pathname === "/api/v1/games") {
-    gamesCollectionHandler(req, res, url);
-    return;
-  }
-
-  // Routes parties — résultats (/api/v1/games/:id/results)
-  const gameResultsMatch = url.pathname.match(/^\/api\/v1\/games\/[^/]+\/results$/);
-  if (gameResultsMatch) {
-    gameResultsHandler(req, res, url);
-    return;
-  }
-
-  // Routes parties — ressource individuelle (/api/v1/games/:id)
-  const gameMatch = url.pathname.match(/^\/api\/v1\/games\/([^/]+)$/);
-  if (gameMatch) {
-    gameResourceHandler(req, res, url);
-    return;
-  }
-
-  // Serve static sound files (CA-29)
-  const soundFileMatch = url.pathname.match(/^\/uploads\/sounds\/([^/]+)$/);
-  if (soundFileMatch && req.method === "GET") {
-    const filename = soundFileMatch[1];
-    const filePath = path.join(uploadsDir, "sounds", filename);
-    const mimeMap = { ".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg" };
-    const ext = path.extname(filename).toLowerCase();
-    const mime = mimeMap[ext];
-    if (!mime) {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: 404, error: "NOT_FOUND", message: "The requested resource was not found." }));
+    if (pathMatch && (!route.method || route.method === req.method)) {
+      route.handler(req, res, url);
       return;
     }
-    try {
-      const stat = fs.statSync(filePath);
-      res.writeHead(200, { "Content-Type": mime, "Content-Length": stat.size });
-      fs.createReadStream(filePath).pipe(res);
-    } catch {
-      res.writeHead(404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ status: 404, error: "NOT_FOUND", message: "The requested resource was not found." }));
-    }
-    return;
   }
 
-  // Routes sons — collection
-  if (url.pathname === "/api/v1/sounds") {
-    soundsCollectionHandler(req, res, url);
-    return;
-  }
-
-  // Routes sons — ressource individuelle (/api/v1/sounds/:id)
-  const soundMatch = url.pathname.match(/^\/api\/v1\/sounds\/([^/]+)$/);
-  if (soundMatch) {
-    soundResourceHandler(req, res, url);
-    return;
-  }
+  // Fichiers son statiques
+  if (serveSoundFile(req, res, url)) return;
 
   // 404 pour toute autre route
   res.writeHead(404, { "Content-Type": "application/json" });

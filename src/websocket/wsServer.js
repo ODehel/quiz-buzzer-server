@@ -160,6 +160,25 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
   // Tracks when the current question's choices were shown (used to compute timeMs for answers)
   let questionStartedAtMs = null;
 
+  /** OCP: registre des handlers admin — ajouter un type = ajouter une entrée */
+  const adminMessageHandlers = {
+    trigger_title: () => {
+      const result = orchestrator.handleTriggerTitle();
+      if (result.ok) questionStartedAtMs = null;
+      return result;
+    },
+    trigger_choices: () => {
+      const result = orchestrator.handleTriggerChoices();
+      if (result.ok) questionStartedAtMs = Date.now();
+      return result;
+    },
+    trigger_correction: () => orchestrator.handleTriggerCorrection(),
+    trigger_next_question: () => orchestrator.handleTriggerNextQuestion(),
+    validate_answer: () => orchestrator.handleValidateAnswer(),
+    invalidate_answer: () => orchestrator.handleInvalidateAnswer(),
+    trigger_intermediate_ranking: () => orchestrator.handleTriggerIntermediateRanking(),
+  };
+
   // ── Game message handler (post-auth) ─────────────────────────────────────
 
   /**
@@ -251,32 +270,13 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       return;
     }
 
-    // ── Admin messages ──────────────────────────────────────────────────────
+    // ── Admin messages (OCP: handler registry) ────────────────────────────
 
     if (role === "admin") {
-      let result;
+      const handler = adminMessageHandlers[type];
+      if (!handler) return;
 
-      if (type === "trigger_title") {
-        result = orchestrator.handleTriggerTitle();
-        if (result.ok) {
-          questionStartedAtMs = null; // reset for next question
-        }
-      } else if (type === "trigger_choices") {
-        result = orchestrator.handleTriggerChoices();
-        if (result.ok) {
-          questionStartedAtMs = Date.now();
-        }
-      } else if (type === "trigger_correction") {
-        result = await orchestrator.handleTriggerCorrection();
-      } else if (type === "trigger_next_question") {
-        result = orchestrator.handleTriggerNextQuestion();
-      } else if (type === "validate_answer") {
-        result = await orchestrator.handleValidateAnswer();
-      } else if (type === "invalidate_answer") {
-        result = await orchestrator.handleInvalidateAnswer();
-      } else if (type === "trigger_intermediate_ranking") {
-        result = orchestrator.handleTriggerIntermediateRanking();
-      }
+      const result = await handler();
 
       if (result && !result.ok) {
         sendJson(ws, {

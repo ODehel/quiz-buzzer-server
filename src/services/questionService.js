@@ -11,9 +11,7 @@ import {
   deleteQuestion,
 } from "../repositories/questionRepository.js";
 import { deleteMediaFile } from "./mediaService.js";
-
-/** Regex de validation UUID */
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { validateUuid, normalizeName as normalizeTitle, isValidUuid, parsePagination, validateAllowedFields } from "../utils/validation.js";
 
 /** Champs autorisés selon la méthode */
 const ALLOWED_FIELDS_POST = new Set([
@@ -29,25 +27,7 @@ const ALLOWED_FIELDS_PATCH = new Set([
   "level", "time_limit", "points", "image_path", "audio_path",
 ]);
 
-/**
- * Valide le format d'un UUID.
- * @param {string} id
- * @throws {AppError} 400 INVALID_UUID
- */
-export function validateUuid(id) {
-  if (!UUID_REGEX.test(id)) {
-    throw new AppError(400, "INVALID_UUID", "The provided ID is not a valid UUID.");
-  }
-}
-
-/**
- * Normalise un titre : trim + collapse des espaces multiples.
- * @param {string} title
- * @returns {string}
- */
-export function normalizeTitle(title) {
-  return title.trim().replace(/\s+/g, " ");
-}
+export { validateUuid, normalizeTitle, parsePagination };
 
 /**
  * Valide le format et la longueur du titre (CA-4).
@@ -182,41 +162,8 @@ export function toApiFormat(row) {
   return result;
 }
 
-/**
- * Vérifie les champs inconnus dans le body.
- * @param {Object} body
- * @param {Set<string>} allowedFields
- * @throws {AppError} 400 UNKNOWN_FIELDS
- */
 function checkUnknownFields(body, allowedFields) {
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new AppError(400, "INVALID_JSON", "Request body must be a JSON object.");
-  }
-  const unknownFields = Object.keys(body).filter((k) => !allowedFields.has(k));
-  if (unknownFields.length > 0) {
-    throw new AppError(400, "UNKNOWN_FIELDS", `Unknown field(s): ${unknownFields.join(", ")}.`);
-  }
-}
-
-/**
- * Valide les paramètres de pagination.
- * @param {URL} url
- * @returns {{ page: number, limit: number }}
- * @throws {AppError} 400 INVALID_PAGINATION
- */
-export function parsePagination(url) {
-  const rawPage = url.searchParams.get("page");
-  const rawLimit = url.searchParams.get("limit");
-
-  const page = rawPage !== null ? Number(rawPage) : 1;
-  const limit = rawLimit !== null ? Number(rawLimit) : 20;
-
-  if (!Number.isInteger(page) || page < 1 ||
-      !Number.isInteger(limit) || limit < 1 || limit > 100) {
-    throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters.");
-  }
-
-  return { page, limit };
+  validateAllowedFields(body, allowedFields, "INVALID_JSON");
 }
 
 /**
@@ -241,7 +188,7 @@ export function parseFilters(url, db) {
 
   // theme_id filter
   if (rawThemeId !== null) {
-    if (!UUID_REGEX.test(rawThemeId)) {
+    if (!isValidUuid(rawThemeId)) {
       throw new AppError(400, "INVALID_FILTER", "Invalid filter parameters.");
     }
     const theme = findThemeById(db, rawThemeId);
@@ -365,7 +312,7 @@ export function createQuestion(db, body) {
   if (theme_id === undefined || theme_id === null) {
     throw new AppError(400, "VALIDATION_ERROR", "theme_id is required.");
   }
-  if (typeof theme_id !== "string" || !UUID_REGEX.test(theme_id)) {
+  if (typeof theme_id !== "string" || !isValidUuid(theme_id)) {
     throw new AppError(400, "INVALID_UUID", "The provided ID is not a valid UUID.");
   }
   const theme = findThemeById(db, theme_id);
@@ -522,7 +469,7 @@ export function createQuestions(db, body) {
     if (theme_id === undefined || theme_id === null) {
       throw new AppError(400, "VALIDATION_ERROR", `${prefix}theme_id is required.`);
     }
-    if (typeof theme_id !== "string" || !UUID_REGEX.test(theme_id)) {
+    if (typeof theme_id !== "string" || !isValidUuid(theme_id)) {
       throw new AppError(400, "INVALID_UUID", `${prefix}The provided ID is not a valid UUID.`);
     }
     const theme = findThemeById(db, theme_id);
@@ -758,7 +705,7 @@ export function updateQuestionById(db, id, body) {
   if (body.theme_id === undefined || body.theme_id === null) {
     throw new AppError(400, "VALIDATION_ERROR", "theme_id is required.");
   }
-  if (typeof body.theme_id !== "string" || !UUID_REGEX.test(body.theme_id)) {
+  if (typeof body.theme_id !== "string" || !isValidUuid(body.theme_id)) {
     throw new AppError(400, "INVALID_UUID", "The provided ID is not a valid UUID.");
   }
   const theme = findThemeById(db, body.theme_id);
@@ -883,7 +830,7 @@ export function patchQuestionById(db, id, body, uploadsDir = "") {
     if (themeId === null) {
       throw new AppError(400, "VALIDATION_ERROR", "theme_id cannot be null.");
     }
-    if (typeof themeId !== "string" || !UUID_REGEX.test(themeId)) {
+    if (typeof themeId !== "string" || !isValidUuid(themeId)) {
       throw new AppError(400, "INVALID_UUID", "The provided ID is not a valid UUID.");
     }
     const theme = findThemeById(db, themeId);
