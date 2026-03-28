@@ -1,8 +1,7 @@
 import { AppError } from "../errors/AppError.js";
 import { validateContentType } from "../middlewares/validateContentType.js";
-import { sendJson, sendError } from "../utils/sendJson.js";
+import { sendJson } from "../utils/sendJson.js";
 import { parseJsonBody } from "../utils/parseJsonBody.js";
-import { logError } from "../utils/logger.js";
 import {
   createQuestion,
   createQuestions,
@@ -11,31 +10,15 @@ import {
   updateQuestionById,
   patchQuestionById,
   deleteQuestionById,
-  parsePagination,
   parseFilters,
   validateUuid,
   toApiFormat,
 } from "../services/questionService.js";
+import { parsePagination } from "../utils/validation.js";
+import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.js";
 import { countQuizzesByQuestion } from "../repositories/quizRepository.js";
 import { parseMultipartFormData, isValidMediaType } from "../middlewares/upload.js";
 import { uploadMedia, deleteMedia } from "../services/mediaService.js";
-
-/**
- * Gestion centralisée des erreurs pour les handlers de questions.
- */
-function handleError(req, res, err) {
-  if (err instanceof AppError) {
-    sendError(res, err);
-  } else {
-    logError("INTERNAL_ERROR", { message: err.message });
-    sendJson(res, 500, {
-      status: 500,
-      error: "INTERNAL_SERVER_ERROR",
-      message: "An unexpected error occurred. Please try again later.",
-      correlation_id: req.correlationId,
-    });
-  }
-}
 
 /**
  * Crée le handler de la collection /api/v1/questions.
@@ -49,28 +32,8 @@ function handleError(req, res, err) {
 export function createQuestionsCollectionHandler(db, config, authenticate, authorize, rateLimiter) {
   return async (req, res, url) => {
     try {
-      // Rate limiting (CA-82)
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        const retryAfter = rateCheck.retryAfter ?? 60;
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
-        }, { "Retry-After": String(retryAfter) });
-        return;
-      }
-
-      // Méthode non supportée (CA-83)
-      if (req.method !== "GET" && req.method !== "POST") {
-        sendJson(res, 405, {
-          status: 405,
-          error: "METHOD_NOT_ALLOWED",
-          message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "GET, POST" });
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["GET", "POST"])) return;
 
       // Authentification + Autorisation (CA-80, CA-81)
       authenticate(req);
@@ -87,8 +50,6 @@ export function createQuestionsCollectionHandler(db, config, authenticate, autho
       }
 
       // GET — Liste paginée avec filtrage (CA-26 à CA-44)
-      // Content-Type est ignoré sur GET
-
       const { page, limit } = parsePagination(url);
       const filters = parseFilters(url, db);
       const result = listQuestions(db, filters, page, limit);
@@ -113,28 +74,8 @@ export function createQuestionsCollectionHandler(db, config, authenticate, autho
 export function createQuestionResourceHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir = "") {
   return async (req, res, url) => {
     try {
-      // Rate limiting (CA-82)
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        const retryAfter = rateCheck.retryAfter ?? 60;
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
-        }, { "Retry-After": String(retryAfter) });
-        return;
-      }
-
-      // Méthode non supportée (CA-83)
-      if (!["GET", "PUT", "PATCH", "DELETE"].includes(req.method)) {
-        sendJson(res, 405, {
-          status: 405,
-          error: "METHOD_NOT_ALLOWED",
-          message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "GET, PUT, PATCH, DELETE" });
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["GET", "PUT", "PATCH", "DELETE"])) return;
 
       // Authentification + Autorisation (CA-80, CA-81)
       authenticate(req);
@@ -143,8 +84,6 @@ export function createQuestionResourceHandler(db, config, authenticate, authoriz
       const id = url.pathname.split("/").pop();
 
       if (req.method === "GET") {
-        // Content-Type est ignoré sur GET
-
         const question = getQuestion(db, id);
         sendJson(res, 200, question);
         return;
@@ -180,8 +119,6 @@ export function createQuestionResourceHandler(db, config, authenticate, authoriz
       }
 
       // DELETE (CA-74 à CA-77)
-      // Content-Type est ignoré sur DELETE
-
       deleteQuestionById(db, id);
       res.writeHead(204);
       res.end();
@@ -204,28 +141,8 @@ export function createQuestionResourceHandler(db, config, authenticate, authoriz
 export function createQuestionsBulkHandler(db, config, authenticate, authorize, rateLimiter) {
   return async (req, res) => {
     try {
-      // Rate limiting
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        const retryAfter = rateCheck.retryAfter ?? 60;
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
-        }, { "Retry-After": String(retryAfter) });
-        return;
-      }
-
-      // Only POST is allowed
-      if (req.method !== "POST") {
-        sendJson(res, 405, {
-          status: 405,
-          error: "METHOD_NOT_ALLOWED",
-          message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "POST" });
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["POST"])) return;
 
       // Authentification + Autorisation
       authenticate(req);
@@ -257,28 +174,8 @@ export function createQuestionsBulkHandler(db, config, authenticate, authorize, 
 export function createMediaUploadHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir) {
   return async (req, res, url) => {
     try {
-      // Rate limiting (CA-27)
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        const retryAfter = rateCheck.retryAfter ?? 60;
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
-        }, { "Retry-After": String(retryAfter) });
-        return;
-      }
-
-      // Only POST is allowed (CA-28)
-      if (req.method !== "POST") {
-        sendJson(res, 405, {
-          status: 405,
-          error: "METHOD_NOT_ALLOWED",
-          message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "POST" });
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["POST"])) return;
 
       // Authenticate + Authorize (CA-25, CA-26)
       authenticate(req);
@@ -328,28 +225,8 @@ export function createMediaUploadHandler(db, config, authenticate, authorize, ra
 export function createMediaDeleteHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir) {
   return async (req, res, url) => {
     try {
-      // Rate limiting (CA-27)
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        const retryAfter = rateCheck.retryAfter ?? 60;
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
-        }, { "Retry-After": String(retryAfter) });
-        return;
-      }
-
-      // Only DELETE is allowed (CA-28)
-      if (req.method !== "DELETE") {
-        sendJson(res, 405, {
-          status: 405,
-          error: "METHOD_NOT_ALLOWED",
-          message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "DELETE" });
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["DELETE"])) return;
 
       // Authenticate + Authorize (CA-25, CA-26)
       authenticate(req);

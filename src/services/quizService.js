@@ -13,34 +13,9 @@ import {
   findQuizWithQuestionsById,
 } from "../repositories/quizRepository.js";
 import { findQuestionById } from "../repositories/questionRepository.js";
+import { validateUuid, normalizeName, NAME_REGEX } from "../utils/validation.js";
 
-/** Regex de validation du nom (CA-3) — identique aux US précédentes */
-const NAME_REGEX = /^[\p{Lu}][\p{L}\p{N} '\-]{1,38}[\p{L}\p{N}]$/u;
-
-/** Regex de validation UUID */
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Normalise un nom : trim + collapse des espaces multiples (CA-2).
- *
- * @param {string} name
- * @returns {string}
- */
-export function normalizeName(name) {
-  return name.trim().replace(/\s+/g, " ");
-}
-
-/**
- * Valide qu'un ID est un UUID valide.
- *
- * @param {string} id
- * @throws {AppError} 400 INVALID_UUID
- */
-export function validateUuid(id) {
-  if (!UUID_REGEX.test(id)) {
-    throw new AppError(400, "INVALID_UUID", "The provided ID is not a valid UUID.");
-  }
-}
+export { validateUuid, normalizeName };
 
 /**
  * Valide le nom d'un quiz (CA-3).

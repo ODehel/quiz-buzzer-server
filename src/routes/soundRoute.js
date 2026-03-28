@@ -1,6 +1,5 @@
 import { AppError } from "../errors/AppError.js";
-import { sendJson, sendError } from "../utils/sendJson.js";
-import { logError } from "../utils/logger.js";
+import { sendJson } from "../utils/sendJson.js";
 import { parseSoundFormData } from "../middlewares/soundUpload.js";
 import {
   createSound,
@@ -8,43 +7,8 @@ import {
   listSounds,
   deleteSoundById,
 } from "../services/soundService.js";
-
-/**
- * Valide les paramètres de pagination (CA-12, CA-13).
- */
-function parsePagination(url) {
-  const rawPage = url.searchParams.get("page");
-  const rawLimit = url.searchParams.get("limit");
-
-  let page = rawPage !== null ? Number(rawPage) : 1;
-  let limit = rawLimit !== null ? Number(rawLimit) : 20;
-
-  if (
-    !Number.isInteger(page) || page < 1 ||
-    !Number.isInteger(limit) || limit < 1 || limit > 100
-  ) {
-    throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters.");
-  }
-
-  return { page, limit };
-}
-
-/**
- * Gestion centralisée des erreurs.
- */
-function handleError(req, res, err) {
-  if (err instanceof AppError) {
-    sendError(res, err);
-  } else {
-    logError("INTERNAL_ERROR", { message: err.message });
-    sendJson(res, 500, {
-      status: 500,
-      error: "INTERNAL_SERVER_ERROR",
-      message: "An unexpected error occurred. Please try again later.",
-      correlation_id: req.correlationId,
-    });
-  }
-}
+import { parsePagination } from "../utils/validation.js";
+import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.js";
 
 /**
  * Handler de la collection /api/v1/sounds (GET list, POST upload).
@@ -52,28 +16,8 @@ function handleError(req, res, err) {
 export function createSoundsCollectionHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir) {
   return async (req, res, url) => {
     try {
-      // Rate limiting (CA-33)
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        const retryAfter = rateCheck.retryAfter || 60;
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
-        }, { "Retry-After": String(retryAfter) });
-        return;
-      }
-
-      // CA-34: Méthode non supportée
-      if (req.method !== "GET" && req.method !== "POST") {
-        sendJson(res, 405, {
-          status: 405,
-          error: "METHOD_NOT_ALLOWED",
-          message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "GET, POST" });
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["GET", "POST"])) return;
 
       // CA-31, CA-32: Authentification + Autorisation
       authenticate(req);
@@ -109,28 +53,8 @@ export function createSoundsCollectionHandler(db, config, authenticate, authoriz
 export function createSoundResourceHandler(db, config, authenticate, authorize, rateLimiter, uploadsDir) {
   return async (req, res, url) => {
     try {
-      // Rate limiting (CA-33)
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        const retryAfter = rateCheck.retryAfter || 60;
-        sendJson(res, 429, {
-          status: 429,
-          error: "RATE_LIMIT_EXCEEDED",
-          message: `Too many requests. Please retry in ${retryAfter} seconds.`,
-        }, { "Retry-After": String(retryAfter) });
-        return;
-      }
-
-      // CA-34: Méthode non supportée
-      if (req.method !== "GET" && req.method !== "DELETE") {
-        sendJson(res, 405, {
-          status: 405,
-          error: "METHOD_NOT_ALLOWED",
-          message: `HTTP method ${req.method} is not allowed on this resource.`,
-        }, { Allow: "GET, DELETE" });
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["GET", "DELETE"])) return;
 
       // CA-31, CA-32: Authentification + Autorisation
       authenticate(req);

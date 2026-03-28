@@ -1,9 +1,10 @@
 import { AppError } from "../errors/AppError.js";
 import { authenticate } from "../services/authService.js";
 import { validateContentType } from "../middlewares/validateContentType.js";
-import { logError } from "../utils/logger.js";
-import { sendJson, sendError } from "../utils/sendJson.js";
+import { sendJson } from "../utils/sendJson.js";
 import { parseJsonBody } from "../utils/parseJsonBody.js";
+import { validateAllowedFields } from "../utils/validation.js";
+import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.js";
 
 const ALLOWED_FIELDS = new Set(["username", "password"]);
 
@@ -14,20 +15,8 @@ const ALLOWED_FIELDS = new Set(["username", "password"]);
  * @throws {AppError} 400 UNKNOWN_FIELDS | 400 VALIDATION_ERROR
  */
 function validateBody(body) {
-  // Rejet des corps non-objet (null, tableau, primitif)
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new AppError(400, "INVALID_BODY", "Request body must be a JSON object.");
-  }
-
-  // Champs inconnus (CA-6, CA-12)
-  const unknownFields = Object.keys(body).filter((k) => !ALLOWED_FIELDS.has(k));
-  if (unknownFields.length > 0) {
-    throw new AppError(
-      400,
-      "UNKNOWN_FIELDS",
-      `Unknown field(s): ${unknownFields.join(", ")}.`
-    );
-  }
+  // Rejet des corps non-objet + champs inconnus (CA-6, CA-12)
+  validateAllowedFields(body, ALLOWED_FIELDS);
 
   // Champs requis (CA-9, CA-10)
   const errors = [];
@@ -54,36 +43,10 @@ export function createTokenHandler(db, config, rateLimiter) {
   return async (req, res) => {
     try {
       // CA-16 : Méthode non supportée
-      if (req.method !== "POST") {
-        sendJson(
-          res,
-          405,
-          {
-            status: 405,
-            error: "METHOD_NOT_ALLOWED",
-            message: `HTTP method ${req.method} is not allowed on this resource.`,
-          },
-          { Allow: "POST" }
-        );
-        return;
-      }
+      if (checkMethod(req, res, ["POST"])) return;
 
       // CA-13 : Rate limiting par IP
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        sendJson(
-          res,
-          429,
-          {
-            status: 429,
-            error: "RATE_LIMIT_EXCEEDED",
-            message: "Too many requests. Please retry in 60 seconds.",
-          },
-          { "Retry-After": String(rateCheck.retryAfter) }
-        );
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
 
       // CA-7 : Content-Type
       validateContentType(req);
@@ -95,23 +58,13 @@ export function createTokenHandler(db, config, rateLimiter) {
       validateBody(body);
 
       // CA-1 à CA-5, CA-8 : Authentification + Token
+      const ip = req.socket.remoteAddress || "unknown";
       const result = await authenticate(db, config, body.username, body.password, ip);
 
       // 200 OK
       sendJson(res, 200, result);
     } catch (err) {
-      if (err instanceof AppError) {
-        sendError(res, err);
-      } else {
-        // CA-21 : Erreur inattendue
-        logError("INTERNAL_ERROR", { message: err.message });
-        sendJson(res, 500, {
-          status: 500,
-          error: "INTERNAL_SERVER_ERROR",
-          message: "An unexpected error occurred. Please try again later.",
-          correlation_id: req.correlationId,
-        });
-      }
+      handleError(req, res, err);
     }
   };
 }

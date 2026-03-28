@@ -1,8 +1,7 @@
 import { AppError } from "../errors/AppError.js";
 import { validateContentType } from "../middlewares/validateContentType.js";
-import { sendJson, sendError } from "../utils/sendJson.js";
+import { sendJson } from "../utils/sendJson.js";
 import { parseJsonBody } from "../utils/parseJsonBody.js";
-import { logError } from "../utils/logger.js";
 import {
   createGame,
   listGames,
@@ -12,75 +11,12 @@ import {
   deleteGame,
   getGameResults,
 } from "../services/gameService.js";
+import { parsePagination, validateAllowedFields } from "../utils/validation.js";
+import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.js";
 
 /** Champs autorisés selon la méthode */
 const ALLOWED_FIELDS_POST = new Set(["quiz_id", "participants"]);
 const ALLOWED_FIELDS_PUT_PATCH = new Set(["quiz_id", "status", "participants"]);
-
-/**
- * Valide que le body est un objet JSON ne contenant que les champs autorisés.
- *
- * @param {unknown} body
- * @param {Set<string>} allowedFields
- * @throws {AppError} 400 INVALID_BODY | 400 UNKNOWN_FIELDS
- */
-function validateAllowedFields(body, allowedFields) {
-  if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new AppError(400, "INVALID_BODY", "Request body must be a JSON object.");
-  }
-  const unknownFields = Object.keys(body).filter((k) => !allowedFields.has(k));
-  if (unknownFields.length > 0) {
-    throw new AppError(
-      400,
-      "UNKNOWN_FIELDS",
-      `Unknown field(s): ${unknownFields.join(", ")}.`
-    );
-  }
-}
-
-/**
- * Valide les paramètres de pagination.
- *
- * @param {URL} url
- * @returns {{ page: number, limit: number }}
- * @throws {AppError} 400 INVALID_PAGINATION
- */
-function parsePagination(url) {
-  const rawPage = url.searchParams.get("page");
-  const rawLimit = url.searchParams.get("limit");
-
-  let page = rawPage !== null ? Number(rawPage) : 1;
-  let limit = rawLimit !== null ? Number(rawLimit) : 20;
-
-  if (
-    !Number.isInteger(page) || page < 1 ||
-    !Number.isInteger(limit) || limit < 1 || limit > 100
-  ) {
-    throw new AppError(400, "INVALID_PAGINATION", "Invalid pagination parameters.");
-  }
-
-  return { page, limit };
-}
-
-/**
- * Gestion centralisée des erreurs.
- *
- * @param {import("node:http").ServerResponse} res
- * @param {unknown} err
- */
-function handleError(req, res, err) {
-  if (err instanceof AppError) {
-    sendError(res, err);
-  } else {
-    logError("INTERNAL_ERROR", { message: err.message });
-    sendJson(res, 500, {
-      status: 500,
-      error: "INTERNAL_SERVER_ERROR",
-      message: "An unexpected error occurred. Please try again later.",
-      correlation_id: req.correlationId,
-    });
-  }
-}
 
 /**
  * Crée le handler de la collection GET /api/v1/games et POST /api/v1/games.
@@ -94,37 +30,8 @@ function handleError(req, res, err) {
 export function createGamesCollectionHandler(db, config, authenticate, authorize, rateLimiter) {
   return async (req, res, url) => {
     try {
-      // CA-54 : Rate limiting
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        sendJson(
-          res,
-          429,
-          {
-            status: 429,
-            error: "RATE_LIMIT_EXCEEDED",
-            message: `Too many requests. Please retry in ${rateCheck.retryAfter} seconds.`,
-          },
-          { "Retry-After": String(rateCheck.retryAfter) }
-        );
-        return;
-      }
-
-      // CA-55 : Méthode supportée
-      if (req.method !== "GET" && req.method !== "POST") {
-        sendJson(
-          res,
-          405,
-          {
-            status: 405,
-            error: "METHOD_NOT_ALLOWED",
-            message: `HTTP method ${req.method} is not allowed on this resource.`,
-          },
-          { Allow: "GET, POST" }
-        );
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["GET", "POST"])) return;
 
       // CA-52 : Authentification
       authenticate(req);
@@ -132,8 +39,6 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
       authorize(req);
 
       if (req.method === "GET") {
-        // Content-Type est ignoré sur GET
-
         const { page, limit } = parsePagination(url);
         const result = listGames(db, page, limit);
         sendJson(res, 200, result);
@@ -174,37 +79,8 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
 export function createGameResourceHandler(db, config, authenticate, authorize, rateLimiter, { onGameStatusChange, onGameDeleted } = {}) {
   return async (req, res, url) => {
     try {
-      // CA-54 : Rate limiting
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        sendJson(
-          res,
-          429,
-          {
-            status: 429,
-            error: "RATE_LIMIT_EXCEEDED",
-            message: `Too many requests. Please retry in ${rateCheck.retryAfter} seconds.`,
-          },
-          { "Retry-After": String(rateCheck.retryAfter) }
-        );
-        return;
-      }
-
-      // CA-55 : Méthode supportée
-      if (!["GET", "PUT", "PATCH", "DELETE"].includes(req.method)) {
-        sendJson(
-          res,
-          405,
-          {
-            status: 405,
-            error: "METHOD_NOT_ALLOWED",
-            message: `HTTP method ${req.method} is not allowed on this resource.`,
-          },
-          { Allow: "GET, PUT, PATCH, DELETE" }
-        );
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["GET", "PUT", "PATCH", "DELETE"])) return;
 
       // CA-52 : Authentification
       authenticate(req);
@@ -215,15 +91,11 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
       const id = match[1];
 
       if (req.method === "GET") {
-        // Content-Type est ignoré sur GET
-
         sendJson(res, 200, getGameById(db, id));
         return;
       }
 
       if (req.method === "DELETE") {
-        // Content-Type est ignoré sur DELETE
-
         // CA-51 : body éventuel ignoré silencieusement
         // Point de vigilance US-010 : passer callback pour nettoyage des timers en mémoire avant suppression SQL
         deleteGame(db, id, onGameDeleted);
@@ -282,40 +154,11 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
 export function createGameResultsHandler(db, config, authenticate, authorize, rateLimiter) {
   return async (req, res, url) => {
     try {
-      const ip = req.socket.remoteAddress || "unknown";
-      const rateCheck = rateLimiter.check(ip);
-      if (!rateCheck.allowed) {
-        sendJson(
-          res,
-          429,
-          {
-            status: 429,
-            error: "RATE_LIMIT_EXCEEDED",
-            message: `Too many requests. Please retry in ${rateCheck.retryAfter} seconds.`,
-          },
-          { "Retry-After": String(rateCheck.retryAfter) }
-        );
-        return;
-      }
-
-      if (req.method !== "GET") {
-        sendJson(
-          res,
-          405,
-          {
-            status: 405,
-            error: "METHOD_NOT_ALLOWED",
-            message: `HTTP method ${req.method} is not allowed on this resource.`,
-          },
-          { Allow: "GET" }
-        );
-        return;
-      }
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["GET"])) return;
 
       authenticate(req);
       authorize(req);
-
-      // Content-Type est ignoré sur GET
 
       const match = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/results$/);
       const id = match[1];

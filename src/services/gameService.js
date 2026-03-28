@@ -17,9 +17,9 @@ import {
 } from "../repositories/gameRepository.js";
 import { findAnswersByGame } from "../repositories/gameanswerRepository.js";
 import { findQuizById } from "../repositories/quizRepository.js";
+import { validateUuid } from "../utils/validation.js";
 
-/** Regex de validation UUID */
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export { validateUuid };
 
 /**
  * Transitions de statut autorisées via PUT/PATCH.
@@ -31,18 +31,6 @@ const ALLOWED_TRANSITIONS = {
   COMPLETED: new Set(),
   IN_ERROR: new Set(),
 };
-
-/**
- * Valide qu'un ID est un UUID valide.
- *
- * @param {string} id
- * @throws {AppError} 400 INVALID_UUID
- */
-export function validateUuid(id) {
-  if (!UUID_REGEX.test(id)) {
-    throw new AppError(400, "INVALID_UUID", "The provided ID is not a valid UUID.");
-  }
-}
 
 /**
  * Valide un tableau de noms de participants (CA-8, CA-9, CA-9a).
