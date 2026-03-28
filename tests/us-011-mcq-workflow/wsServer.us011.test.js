@@ -98,8 +98,19 @@ async function startServer(db, opts = {}) {
 
 async function teardown(server, wss, sockets = []) {
   wss._notifyGameDeleted?.();
+
+  // Wait for server-side clients to fully close (triggers stopHeartbeat)
+  const serverClosePromises = [...wss.clients].map(
+    (client) =>
+      new Promise((resolve) => {
+        if (client.readyState === WebSocket.CLOSED) return resolve();
+        client.once("close", resolve);
+        client.terminate();
+      })
+  );
+
   // Close all client-side WebSocket connections and wait for them to finish
-  const closePromises = sockets.map(
+  const clientClosePromises = sockets.map(
     (ws) =>
       new Promise((resolve) => {
         if (ws.readyState === WebSocket.CLOSED) return resolve();
@@ -107,8 +118,8 @@ async function teardown(server, wss, sockets = []) {
         ws.terminate();
       })
   );
-  for (const client of wss.clients) client.terminate();
-  await Promise.all(closePromises);
+
+  await Promise.all([...serverClosePromises, ...clientClosePromises]);
   await new Promise((resolve) => server.close(resolve));
 }
 
