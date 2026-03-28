@@ -97,6 +97,7 @@ async function startServer(db, opts = {}) {
 }
 
 async function teardown(server, wss) {
+  wss._notifyGameDeleted?.();
   for (const client of wss.clients) client.terminate();
   await new Promise((resolve) => server.close(resolve));
 }
@@ -770,14 +771,14 @@ describe("CA-37 — crash recovery (US-019 — recoverInterruptedGame before ser
     recoverInterruptedGame(db);
 
     const newServer = createServer();
-    attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
+    const newWss = attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
     await new Promise((r) => newServer.listen(0, "127.0.0.1", r));
 
     const row = db.prepare("SELECT GAM_STATUS, GAM_CURRENT_QUESTION_INDEX FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
     expect(row.GAM_STATUS).toBe("OPEN");
     expect(row.GAM_CURRENT_QUESTION_INDEX).toBe(1);
 
-    await new Promise((r) => newServer.close(r));
+    await teardown(newServer, newWss);
   });
 
   it("should recover a game stuck in QUESTION_TITLE on server startup", async () => {
@@ -787,12 +788,12 @@ describe("CA-37 — crash recovery (US-019 — recoverInterruptedGame before ser
     recoverInterruptedGame(db);
 
     const newServer = createServer();
-    attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
+    const newWss = attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
     await new Promise((r) => newServer.listen(0, "127.0.0.1", r));
 
     const row = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
     expect(row.GAM_STATUS).toBe("OPEN");
 
-    await new Promise((r) => newServer.close(r));
+    await teardown(newServer, newWss);
   });
 });
