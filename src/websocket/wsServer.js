@@ -11,6 +11,7 @@ import { startHeartbeat, stopHeartbeat } from "./ws-heartbeat.js";
 import { SYSTEM_SOUNDS } from "../constants/systemSounds.js";
 import { broadcastSystemSoundToBuzzers, sendSystemSound } from "../utils/soundUtils.js";
 import { syncGameStateOnConnect } from "../game/gameSync.js";
+import { scheduleTokenTimers, clearTokenTimers, handleAuthRefresh } from "./tokenRefreshHandler.js";
 
 export const MAX_BUZZERS = 10;
 export const AUTH_TIMEOUT_MS = 60_000;
@@ -50,6 +51,7 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
   wsRateLimitWindowMs = WS_RATE_LIMIT_WINDOW_MS,
   orchestratorOptions = {},
   heartbeatOptions = {},
+  tokenTimerOptions = {},
   serverBaseUrl = "",
 } = {}) {
   const wss = new WebSocketServer({ noServer: true });
@@ -542,8 +544,28 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     }, authTimeoutMs);
 
     ws.on("message", (data) => {
-      // Post-auth: route to game message handler (CA-37 to CA-42)
+      // Post-auth: route auth_refresh or game message handler
       if (sub !== null) {
+        // CA-20: parse JSON; ignore invalid JSON silently with WARN
+        let msg;
+        try {
+          msg = JSON.parse(data.toString());
+        } catch {
+          logWarn("GAME_MESSAGE_IGNORED", { reason: "Invalid JSON", sub });
+          return;
+        }
+
+        // US-021: handle auth_refresh on existing connection
+        if (msg && msg.type === "auth_refresh") {
+          try {
+            handleAuthRefresh(msg, ws, sub, registry, jwtSecret, tokenTimerOptions);
+          } catch (err) {
+            logError("INTERNAL_ERROR", { message: err.message });
+            ws.close(1011, "Internal server error.");
+          }
+          return;
+        }
+
         handleGameMessage(data, sub, ws);
         return;
       }
@@ -611,6 +633,7 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       // Helper: close and remove an existing session from the registry
       function replaceExistingSession(existingSub) {
         const existing = registry.get(existingSub);
+        clearTokenTimers(existing, tokenTimerOptions);
         stopHeartbeat(existing.ws, heartbeatOptions);
         registry.delete(existingSub);
         existing.ws.close(WS_CLOSE_SESSION_REPLACED, "Session replaced.");
@@ -658,6 +681,9 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         expires_in: expiresIn,
       }));
 
+      // US-021: Schedule token expiration timers
+      scheduleTokenTimers(ws, registry.get(sub), decoded.exp, registry, sub, tokenTimerOptions);
+
       // US-019: Synchronisation de l'état de jeu après auth_success
       syncGameStateOnConnect(ws, tokenRole, user.USR_USERNAME, db, {
         getTimerInfo: () => orchestrator.getTimerInfo(),
@@ -685,6 +711,8 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       if (sub !== null) {
         const entry = registry.get(sub);
         if (entry && entry.ws === ws) {
+          // US-021 CA-4, CA-9: clear token timers on disconnect
+          clearTokenTimers(entry, tokenTimerOptions);
           registry.delete(sub);
           logInfo("WEBSOCKET_DISCONNECTED", {
             username: entry.username,
