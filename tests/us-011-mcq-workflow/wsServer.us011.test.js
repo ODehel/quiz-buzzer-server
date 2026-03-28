@@ -96,9 +96,19 @@ async function startServer(db, opts = {}) {
   return { server, wss };
 }
 
-async function teardown(server, wss) {
+async function teardown(server, wss, sockets = []) {
   wss._notifyGameDeleted?.();
+  // Close all client-side WebSocket connections and wait for them to finish
+  const closePromises = sockets.map(
+    (ws) =>
+      new Promise((resolve) => {
+        if (ws.readyState === WebSocket.CLOSED) return resolve();
+        ws.once("close", resolve);
+        ws.terminate();
+      })
+  );
   for (const client of wss.clients) client.terminate();
+  await Promise.all(closePromises);
   await new Promise((resolve) => server.close(resolve));
 }
 
@@ -106,6 +116,7 @@ function connectWs(server) {
   const port = server.address().port;
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    openSockets.push(ws);
     ws.once("open", () => resolve(ws));
     ws.once("error", reject);
   });
@@ -170,15 +181,18 @@ function spyOnLogger() {
 
 let db, server, wss;
 let captured, restore;
+/** @type {WebSocket[]} */
+let openSockets;
 
 beforeEach(async () => {
   db = createTestDb();
+  openSockets = [];
   ({ captured, restore } = spyOnLogger());
   ({ server, wss } = await startServer(db));
 });
 
 afterEach(async () => {
-  await teardown(server, wss);
+  await teardown(server, wss, openSockets);
   db.close();
   restore();
 });
