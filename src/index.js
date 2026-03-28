@@ -35,6 +35,7 @@ import {
   createSoundsCollectionHandler,
   createSoundResourceHandler,
 } from "./routes/soundRoute.js";
+import { createHealthHandler } from "./routes/health.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,6 +56,7 @@ const tokenRateLimiter = new RateLimiter(20, 60_000);
 const apiRateLimiter = new RateLimiter(100, 60_000); // CA-34 / CA-82 : 100 req/min
 
 // Handlers
+const healthHandler = createHealthHandler();
 const tokenHandler = createTokenHandler(db, config, tokenRateLimiter);
 const themesCollectionHandler = createThemesCollectionHandler(
   db, config, authenticate, authorize, apiRateLimiter
@@ -112,6 +114,12 @@ const soundResourceHandler = createSoundResourceHandler(
  */
 function requestHandler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+  // US-020 : Health check (public, sans authentification)
+  if (url.pathname === "/api/v1/health") {
+    healthHandler(req, res);
+    return;
+  }
 
   if (url.pathname === "/api/v1/token") {
     tokenHandler(req, res);
