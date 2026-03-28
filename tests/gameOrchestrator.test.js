@@ -78,7 +78,7 @@ describe("gameOrchestrator", () => {
     db.close();
   });
 
-  // ── trigger_title (CA-4, CA-5, CA-6, CA-7) ───────────────────────────────
+  // ── trigger_title (CA-4, CA-5, CA-6, CA-7, CA-8) ───────────────────────────────
 
   describe("trigger_title", () => {
     it("CA-4: transitions to QUESTION_TITLE and broadcasts question_title", () => {
@@ -103,7 +103,7 @@ describe("gameOrchestrator", () => {
       expect(msg.time_limit).toBe(30);
     });
 
-    it("CA-6: returns error INVALID_STATE when state is not OPEN", () => {
+    it("CA-6: returns error INVALID_STATE when state is PENDING (game never started)", () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'PENDING' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -112,7 +112,7 @@ describe("gameOrchestrator", () => {
       expect(result.error.code).toBe("INVALID_STATE");
     });
 
-    it("CA-6: returns error INVALID_STATE when state is QUESTION_TITLE", () => {
+    it("CA-7: returns error INVALID_STATE when state is not OPEN (other states)", () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -121,7 +121,7 @@ describe("gameOrchestrator", () => {
       expect(result.error.code).toBe("INVALID_STATE");
     });
 
-    it("CA-7: returns error NO_MORE_QUESTIONS when index is out of bounds", () => {
+    it("CA-8: returns error NO_MORE_QUESTIONS when index is out of bounds", () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_CURRENT_QUESTION_INDEX = 99 WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -140,7 +140,7 @@ describe("gameOrchestrator", () => {
     });
   });
 
-  // ── trigger_choices (CA-8, CA-9, CA-10, CA-11, CA-12) ─────────────────────
+  // ── trigger_choices (CA-8, CA-10, CA-11, CA-12, CA-13) ─────────────────────
 
   describe("trigger_choices", () => {
     function setupQuestionTitle() {
@@ -159,7 +159,7 @@ describe("gameOrchestrator", () => {
       expect(broadcast.target).toBe("broadcast");
     });
 
-    it("CA-9: question_choices contains choices, started_at, time_limit", () => {
+    it("CA-10: question_choices contains choices, started_at, time_limit", () => {
       setupQuestionTitle();
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -170,7 +170,7 @@ describe("gameOrchestrator", () => {
       expect(msg.time_limit).toBe(30);
     });
 
-    it("CA-10: emits timer_tick after tick interval", () => {
+    it("CA-11: emits timer_tick after tick interval", () => {
       setupQuestionTitle();
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -182,7 +182,7 @@ describe("gameOrchestrator", () => {
       expect(ticks[0].target).toBe("broadcast");
     });
 
-    it("CA-12: returns error INVALID_STATE when state is not QUESTION_TITLE", () => {
+    it("CA-13: returns error INVALID_STATE when state is not QUESTION_TITLE", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       const result = orch.handleTriggerChoices();
@@ -190,7 +190,7 @@ describe("gameOrchestrator", () => {
       expect(result.error.code).toBe("INVALID_STATE");
     });
 
-    it("CA-11: timer_end is broadcast when time expires", () => {
+    it("CA-12: timer_end is broadcast when time expires", () => {
       setupQuestionTitle();
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -201,7 +201,7 @@ describe("gameOrchestrator", () => {
       expect(timerEnd.target).toBe("broadcast");
     });
 
-    it("CA-11: answer processor is expired when timer ends", () => {
+    it("CA-12: answer processor is expired when timer ends", () => {
       setupQuestionTitle();
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -213,10 +213,10 @@ describe("gameOrchestrator", () => {
     });
   });
 
-  // ── trigger_correction (CA-22 to CA-28) ───────────────────────────────────
+  // ── trigger_correction (CA-23 to CA-29) ───────────────────────────────────
 
   describe("trigger_correction", () => {
-    it("CA-22 + CA-26: transitions to QUESTION_CLOSED when all answered", async () => {
+    it("CA-23 + CA-27: transitions to QUESTION_CLOSED when all answered", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -230,7 +230,7 @@ describe("gameOrchestrator", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_CLOSED");
     });
 
-    it("CA-22: succeeds when timer expired (even if not all answered)", async () => {
+    it("CA-23: succeeds when timer expired (even if not all answered)", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -242,7 +242,7 @@ describe("gameOrchestrator", () => {
       expect(result.ok).toBe(true);
     });
 
-    it("CA-24: sends question_result individually to each buzzer", async () => {
+    it("CA-25: sends question_result individually to each buzzer", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -266,7 +266,7 @@ describe("gameOrchestrator", () => {
       expect(p2.points_earned).toBe(0);
     });
 
-    it("CA-25: sends question_result_summary to admin", async () => {
+    it("CA-26: sends question_result_summary to admin", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -286,7 +286,7 @@ describe("gameOrchestrator", () => {
       expect(summary.ranking[0].rank).toBe(1);
     });
 
-    it("CA-27: returns error INVALID_STATE when state is not QUESTION_OPEN", async () => {
+    it("CA-28: returns error INVALID_STATE when state is not QUESTION_OPEN", async () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       const result = await orch.handleTriggerCorrection();
@@ -294,7 +294,7 @@ describe("gameOrchestrator", () => {
       expect(result.error.code).toBe("INVALID_STATE");
     });
 
-    it("CA-28: returns ANSWERS_PENDING when timer running and not all answered", async () => {
+    it("CA-29: returns ANSWERS_PENDING when timer running and not all answered", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -306,7 +306,7 @@ describe("gameOrchestrator", () => {
       expect(result.error.code).toBe("ANSWERS_PENDING");
     });
 
-    it("CA-23: stops timer when correction triggered before expiration", async () => {
+    it("CA-24: stops timer when correction triggered before expiration", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -324,10 +324,10 @@ describe("gameOrchestrator", () => {
     });
   });
 
-  // ── trigger_next_question (CA-29, CA-30, CA-31) ───────────────────────────
+  // ── trigger_next_question (CA-30, CA-31, CA-32) ───────────────────────────
 
   describe("trigger_next_question", () => {
-    it("CA-29: increments index and transitions to OPEN", async () => {
+    it("CA-30: increments index and transitions to OPEN", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -344,7 +344,7 @@ describe("gameOrchestrator", () => {
       expect(row.GAM_CURRENT_QUESTION_INDEX).toBe(1);
     });
 
-    it("CA-30: transitions to COMPLETED when last question", () => {
+    it("CA-31: transitions to COMPLETED when last question", () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_CURRENT_QUESTION_INDEX = 11, GAM_STATUS = 'QUESTION_CLOSED' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -353,7 +353,7 @@ describe("gameOrchestrator", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("COMPLETED");
     });
 
-    it("CA-31: returns error INVALID_STATE when state is not QUESTION_CLOSED", () => {
+    it("CA-32: returns error INVALID_STATE when state is not QUESTION_CLOSED", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       const result = orch.handleTriggerNextQuestion();
@@ -376,7 +376,7 @@ describe("gameOrchestrator", () => {
     });
   });
 
-  // ── handleAnswer integration (CA-13 to CA-21) ────────────────────────────
+  // ── handleAnswer integration (CA-14 to CA-22) ────────────────────────────
 
   describe("handleAnswer — integration", () => {
     function setupQuestionOpen(orch) {
@@ -384,7 +384,7 @@ describe("gameOrchestrator", () => {
       orch.handleTriggerChoices();
     }
 
-    it("CA-13 + CA-14: records answer and sends answer_received", () => {
+    it("CA-14 + CA-15: records answer and sends answer_received", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       setupQuestionOpen(orch);
@@ -393,7 +393,7 @@ describe("gameOrchestrator", () => {
       expect(mock.messages.find((m) => m.type === "answer_received" && m.target === "buzzer-1")).toBeDefined();
     });
 
-    it("CA-15: sends player_answered to admin", () => {
+    it("CA-16: sends player_answered to admin", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       setupQuestionOpen(orch);
@@ -405,7 +405,7 @@ describe("gameOrchestrator", () => {
       expect(notif.time_ms).toBe(5200);
     });
 
-    it("CA-16: sends all_answered when all respond", () => {
+    it("CA-17: sends all_answered when all respond", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       setupQuestionOpen(orch);
@@ -415,7 +415,7 @@ describe("gameOrchestrator", () => {
       expect(mock.messages.find((m) => m.type === "all_answered")).toBeDefined();
     });
 
-    it("CA-16: does not send all_answered if incomplete", () => {
+    it("CA-17: does not send all_answered if incomplete", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       setupQuestionOpen(orch);
@@ -423,13 +423,13 @@ describe("gameOrchestrator", () => {
       expect(mock.messages.find((m) => m.type === "all_answered")).toBeUndefined();
     });
 
-    it("CA-17: rejects answer in wrong state", () => {
+    it("CA-18: rejects answer in wrong state", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       expect(orch.handleAnswer(1, "A", 3100).reason).toBe("INVALID_STATE");
     });
 
-    it("CA-18: rejects duplicate", () => {
+    it("CA-19: rejects duplicate", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       setupQuestionOpen(orch);
@@ -437,14 +437,14 @@ describe("gameOrchestrator", () => {
       expect(orch.handleAnswer(1, "B", 5000).reason).toBe("DUPLICATE_ANSWER");
     });
 
-    it("CA-19: rejects invalid value", () => {
+    it("CA-20: rejects invalid value", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       setupQuestionOpen(orch);
       expect(orch.handleAnswer(1, "E", 3100).reason).toBe("INVALID_ANSWER");
     });
 
-    it("CA-21: rejects unknown participant", () => {
+    it("CA-22: rejects unknown participant", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       setupQuestionOpen(orch);
@@ -603,7 +603,7 @@ describe("gameOrchestrator", () => {
       }
     });
 
-    it("CA-12: message content is identical for all clients (broadcast)", () => {
+    it("CA-13: message content is identical for all clients (broadcast)", () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
       orch.handleTriggerIntermediateRanking();
@@ -612,7 +612,7 @@ describe("gameOrchestrator", () => {
       expect(broadcasts[0].target).toBe("broadcast");
     });
 
-    it("CA-13: does not affect game workflow state during question", async () => {
+    it("CA-14: does not affect game workflow state during question", async () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
@@ -624,7 +624,7 @@ describe("gameOrchestrator", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_TITLE");
     });
 
-    it("CA-14: ranking is calculated on-the-fly, reflects persisted scores", async () => {
+    it("CA-15: ranking is calculated on-the-fly, reflects persisted scores", async () => {
       const mock = createMockSend();
       const orch = createGameOrchestrator(db, mock);
 
