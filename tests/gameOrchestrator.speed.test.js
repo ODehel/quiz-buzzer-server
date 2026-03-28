@@ -125,7 +125,16 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(questionOpen.started_at).toBeDefined();
     });
 
-    it("CA-6: returns INVALID_STATE if not in OPEN", () => {
+    it("CA-6: returns INVALID_STATE if in PENDING (game never started)", () => {
+      db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'PENDING' WHERE GAM_ID = 'gam-1'").run();
+      const sender = createMockSend();
+      const orch = createGameOrchestrator(db, sender);
+      const result = orch.handleTriggerTitle();
+      expect(result.ok).toBe(false);
+      expect(result.error.code).toBe("INVALID_STATE");
+    });
+
+    it("CA-7: returns INVALID_STATE if not in OPEN (other states)", () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN' WHERE GAM_ID = 'gam-1'").run();
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender);
@@ -134,7 +143,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(result.error.code).toBe("INVALID_STATE");
     });
 
-    it("CA-8: starts timer that emits ticks", () => {
+    it("CA-9: starts timer that emits ticks", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -153,7 +162,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
   // ── handleBuzz ────────────────────────────────────────────────────────────
 
   describe("handleBuzz", () => {
-    it("CA-13: accepts buzz and transitions to QUESTION_BUZZED", () => {
+    it("CA-14: accepts buzz and transitions to QUESTION_BUZZED", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -166,7 +175,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_BUZZED");
     });
 
-    it("CA-14: sends buzz_accepted to buzzer", () => {
+    it("CA-15: sends buzz_accepted to buzzer", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -180,7 +189,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(accepted).toBeDefined();
     });
 
-    it("CA-15: sends buzz_locked to other buzzers and admin", () => {
+    it("CA-16: sends buzz_locked to other buzzers and admin", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -199,7 +208,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(locked.every(m => m.buzzer_username === "Charlie")).toBe(true);
     });
 
-    it("CA-16: rejects buzz when not in QUESTION_OPEN", () => {
+    it("CA-17: rejects buzz when not in QUESTION_OPEN", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -210,7 +219,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(result.reason).toBe("INVALID_STATE");
     });
 
-    it("CA-18: rejects buzz from invalidated player", () => {
+    it("CA-19: rejects buzz from invalidated player", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -226,7 +235,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(result.accepted).toBe(false);
     });
 
-    it("CA-11: timer ticks stop after buzz", () => {
+    it("CA-12: timer ticks stop after buzz", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -247,7 +256,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
   // ── handleValidateAnswer ──────────────────────────────────────────────────
 
   describe("handleValidateAnswer", () => {
-    it("CA-19: validates answer, persists winner, transitions to QUESTION_CLOSED", async () => {
+    it("CA-20: validates answer, persists winner, transitions to QUESTION_CLOSED", async () => {
       const sender = createMockSend();
       const persistFn = jest.fn();
       const orch = createGameOrchestrator(db, sender, {
@@ -263,7 +272,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_CLOSED");
     });
 
-    it("CA-20: returns INVALID_STATE when not in QUESTION_BUZZED", async () => {
+    it("CA-21: returns INVALID_STATE when not in QUESTION_BUZZED", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -275,7 +284,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(result.error.code).toBe("INVALID_STATE");
     });
 
-    it("CA-26: persists only the winner with SPEED_WIN answer", async () => {
+    it("CA-27: persists only the winner with SPEED_WIN answer", async () => {
       const sender = createMockSend();
       const persistedData = [];
       const persistFn = jest.fn((data) => persistedData.push(...data));
@@ -295,7 +304,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(persistedData[0].pointsEarned).toBe(20);
     });
 
-    it("CA-30: sends question_result to each buzzer", async () => {
+    it("CA-31: sends question_result to each buzzer", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         persistFn: jest.fn(),
@@ -323,7 +332,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(alice.points_earned).toBe(0);
     });
 
-    it("CA-31: sends question_result_summary to admin", async () => {
+    it("CA-32: sends question_result_summary to admin", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         persistFn: jest.fn(),
@@ -345,7 +354,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(summary.ranking.length).toBe(3);
     });
 
-    it("CA-29: transitions to IN_ERROR after persistence failure", async () => {
+    it("CA-30: transitions to IN_ERROR after persistence failure", async () => {
       const sender = createMockSend();
       const persistFn = jest.fn(() => { throw new Error("DB error"); });
       const orch = createGameOrchestrator(db, sender, {
@@ -365,7 +374,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
   // ── handleInvalidateAnswer ────────────────────────────────────────────────
 
   describe("handleInvalidateAnswer", () => {
-    it("CA-21: invalidates and returns to QUESTION_OPEN when players remain", async () => {
+    it("CA-22: invalidates and returns to QUESTION_OPEN when players remain", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -378,7 +387,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_OPEN");
     });
 
-    it("CA-22: sends buzz_invalidated to invalidated buzzer", async () => {
+    it("CA-23: sends buzz_invalidated to invalidated buzzer", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -393,7 +402,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(invalidated).toBeDefined();
     });
 
-    it("CA-23: sends buzz_unlocked to non-invalidated buzzers and admin", async () => {
+    it("CA-24: sends buzz_unlocked to non-invalidated buzzers and admin", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -413,7 +422,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(unlocked.every(m => m.remaining_seconds > 0)).toBe(true);
     });
 
-    it("CA-12: timer resumes after invalidation", async () => {
+    it("CA-13: timer resumes after invalidation", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -430,7 +439,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(ticks.length).toBeGreaterThanOrEqual(1);
     });
 
-    it("CA-24: closes question when all players invalidated", async () => {
+    it("CA-25: closes question when all players invalidated", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -449,7 +458,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_CLOSED");
     });
 
-    it("CA-25: returns INVALID_STATE when not in QUESTION_BUZZED", async () => {
+    it("CA-26: returns INVALID_STATE when not in QUESTION_BUZZED", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -461,7 +470,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(result.error.code).toBe("INVALID_STATE");
     });
 
-    it("CA-27: no persistence when all players invalidated (no winner)", async () => {
+    it("CA-28: no persistence when all players invalidated (no winner)", async () => {
       const sender = createMockSend();
       const persistFn = jest.fn();
       const orch = createGameOrchestrator(db, sender, {
@@ -485,7 +494,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
   // ── Timer expiration ──────────────────────────────────────────────────────
 
   describe("Timer expiration — SPEED", () => {
-    it("CA-9: timer expiration in QUESTION_OPEN closes question with no winner", () => {
+    it("CA-10: timer expiration in QUESTION_OPEN closes question with no winner", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -503,7 +512,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_CLOSED");
     });
 
-    it("CA-10: timer expiration during QUESTION_BUZZED sends timer_end to admin only", () => {
+    it("CA-11: timer expiration during QUESTION_BUZZED sends timer_end to admin only", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },
@@ -559,7 +568,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
   // ── trigger_next_question ─────────────────────────────────────────────────
 
   describe("handleTriggerNextQuestion — after SPEED", () => {
-    it("CA-32: advances to next question after SPEED question", async () => {
+    it("CA-33: advances to next question after SPEED question", async () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         persistFn: jest.fn(),
@@ -578,7 +587,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(getGameRow(db).GAM_CURRENT_QUESTION_INDEX).toBe(1);
     });
 
-    it("CA-33: returns INVALID_STATE when not in QUESTION_CLOSED", () => {
+    it("CA-34: returns INVALID_STATE when not in QUESTION_CLOSED", () => {
       const sender = createMockSend();
       const orch = createGameOrchestrator(db, sender, {
         retryOptions: { baseDelayMs: 0 },

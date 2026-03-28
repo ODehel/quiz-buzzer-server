@@ -1,6 +1,6 @@
 /**
  * Tests for US-011 — WebSocket game message handling.
- * Covers CA-37, CA-38, CA-40, CA-41, CA-42, and the full MCQ workflow
+ * Covers CA-38, CA-39, CA-41, CA-42, CA-43, and the full MCQ workflow
  * wired through the WebSocket server.
  */
 
@@ -172,9 +172,9 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-41 — Invalid JSON after authentication → ignored, WARN
+// CA-42 — Invalid JSON after authentication → ignored, WARN
 // ---------------------------------------------------------------------------
-describe("CA-41 — invalid JSON after auth", () => {
+describe("CA-42 — invalid JSON after auth", () => {
   it("should ignore invalid JSON silently and stay connected", async () => {
     const ws = await connectWs(server);
     await authenticate(ws, "admin-1", "admin");
@@ -189,9 +189,9 @@ describe("CA-41 — invalid JSON after auth", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-40 — Unknown message type after authentication → ignored, WARN
+// CA-41 — Unknown message type after authentication → ignored, WARN
 // ---------------------------------------------------------------------------
-describe("CA-40 — unknown message type after auth", () => {
+describe("CA-41 — unknown message type after auth", () => {
   it("should ignore unknown type from admin and stay connected", async () => {
     const ws = await connectWs(server);
     await authenticate(ws, "admin-1", "admin");
@@ -230,9 +230,9 @@ describe("CA-40 — unknown message type after auth", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-37 — Buzzer sending admin-only message → ignored, WARN
+// CA-38 — Buzzer sending admin-only message → ignored, WARN
 // ---------------------------------------------------------------------------
-describe("CA-37 — buzzer sending admin-only message", () => {
+describe("CA-38 — buzzer sending admin-only message", () => {
   it("should ignore trigger_title from buzzer", async () => {
     const ws = await connectWs(server);
     await authenticate(ws, "buzzer-1", "buzzer");
@@ -283,9 +283,9 @@ describe("CA-37 — buzzer sending admin-only message", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-38 — Admin sending buzzer-only message → ignored, WARN
+// CA-39 — Admin sending buzzer-only message → ignored, WARN
 // ---------------------------------------------------------------------------
-describe("CA-38 — admin sending buzzer-only message", () => {
+describe("CA-39 — admin sending buzzer-only message", () => {
   it("should ignore 'answer' from admin", async () => {
     const ws = await connectWs(server);
     await authenticate(ws, "admin-1", "admin");
@@ -300,9 +300,9 @@ describe("CA-38 — admin sending buzzer-only message", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-42 — answer with missing/invalid fields → error INVALID_MESSAGE
+// CA-43 — answer with missing/invalid fields → error INVALID_MESSAGE
 // ---------------------------------------------------------------------------
-describe("CA-42 — answer with missing fields", () => {
+describe("CA-43 — answer with missing fields", () => {
   it("should return INVALID_MESSAGE when 'value' is missing", async () => {
     const ws = await connectWs(server);
     await authenticate(ws, "buzzer-1", "buzzer");
@@ -341,7 +341,7 @@ describe("CA-42 — answer with missing fields", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-4 / CA-6 — trigger_title: valid and error cases
+// CA-4 / CA-6 / CA-7 / CA-8 — trigger_title: valid and error cases
 // ---------------------------------------------------------------------------
 describe("trigger_title", () => {
   it("CA-4: admin trigger_title broadcasts question_title to all connected clients", async () => {
@@ -367,7 +367,21 @@ describe("trigger_title", () => {
     expect(adminMsg.time_limit).toBe(5);
   });
 
-  it("CA-6: trigger_title in wrong state returns INVALID_STATE error to admin", async () => {
+  it("CA-6: trigger_title in PENDING state returns INVALID_STATE error to admin", async () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'PENDING' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+
+    const msgPromise = waitForMessage(adminWs);
+    adminWs.send(JSON.stringify({ type: "trigger_title" }));
+    const msg = await msgPromise;
+
+    expect(msg.type).toBe("error");
+    expect(msg.code).toBe("INVALID_STATE");
+  });
+
+  it("CA-7: trigger_title in wrong state (non-OPEN) returns INVALID_STATE error to admin", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
 
     const adminWs = await connectWs(server);
@@ -381,7 +395,7 @@ describe("trigger_title", () => {
     expect(msg.code).toBe("INVALID_STATE");
   });
 
-  it("CA-7: trigger_title with no more questions returns NO_MORE_QUESTIONS", async () => {
+  it("CA-8: trigger_title with no more questions returns NO_MORE_QUESTIONS", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_CURRENT_QUESTION_INDEX = 99 WHERE GAM_ID = ?").run("gam-1");
 
     const adminWs = await connectWs(server);
@@ -397,14 +411,14 @@ describe("trigger_title", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-8 / CA-9 / CA-10 / CA-11 / CA-12 — trigger_choices
+// CA-9 / CA-10 / CA-11 / CA-12 / CA-13 — trigger_choices
 // ---------------------------------------------------------------------------
 describe("trigger_choices", () => {
   beforeEach(() => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
   });
 
-  it("CA-8: admin trigger_choices broadcasts question_choices to all connected clients", async () => {
+  it("CA-9: admin trigger_choices broadcasts question_choices to all connected clients", async () => {
     const adminWs = await connectWs(server);
     const buzzerWs = await connectWs(server);
 
@@ -426,7 +440,7 @@ describe("trigger_choices", () => {
     expect(adminMsg.time_limit).toBe(5);
   });
 
-  it("CA-12: trigger_choices in wrong state returns INVALID_STATE", async () => {
+  it("CA-13: trigger_choices in wrong state returns INVALID_STATE", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'OPEN' WHERE GAM_ID = ?").run("gam-1");
 
     const adminWs = await connectWs(server);
@@ -442,14 +456,14 @@ describe("trigger_choices", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-13 / CA-14 / CA-15 / CA-16 — answer handling
+// CA-15 / CA-16 / CA-17 / CA-18 — answer handling
 // ---------------------------------------------------------------------------
 describe("answer handling", () => {
   beforeEach(() => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN' WHERE GAM_ID = ?").run("gam-1");
   });
 
-  it("CA-14: buzzer receives answer_received after sending valid answer", async () => {
+  it("CA-15: buzzer receives answer_received after sending valid answer", async () => {
     const adminWs = await connectWs(server);
     const buzzerWs = await connectWs(server);
 
@@ -472,7 +486,7 @@ describe("answer handling", () => {
     expect(response.type).toBe("answer_received");
   });
 
-  it("CA-15: admin receives player_answered when buzzer answers", async () => {
+  it("CA-16: admin receives player_answered when buzzer answers", async () => {
     const adminWs = await connectWs(server);
     const buzzerWs = await connectWs(server);
 
@@ -498,7 +512,7 @@ describe("answer handling", () => {
     expect(typeof adminNotif.time_ms).toBe("number");
   });
 
-  it("CA-17: answer in wrong game state is ignored", async () => {
+  it("CA-18: answer in wrong game state is ignored", async () => {
     // Game is QUESTION_OPEN but no processor (no trigger_choices was called)
     const buzzerWs = await connectWs(server);
     await authenticate(buzzerWs, "buzzer-1", "buzzer");
@@ -512,7 +526,7 @@ describe("answer handling", () => {
     expect(warns.some((w) => w.event === "GAME_ANSWER_IGNORED")).toBe(true);
   });
 
-  it("CA-21: answer from buzzer with no matching participant is ignored", async () => {
+  it("CA-22: answer from buzzer with no matching participant is ignored", async () => {
     // Add a buzzer user NOT in the game participants
     db.prepare(
       `INSERT INTO T_USER_USR (USR_ID, USR_USERNAME, USR_PASSWORD, USR_ROLE, USR_CREATED_AT)
@@ -542,10 +556,10 @@ describe("answer handling", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-27 / CA-28 — trigger_correction error cases
+// CA-28 / CA-29 — trigger_correction error cases
 // ---------------------------------------------------------------------------
 describe("trigger_correction", () => {
-  it("CA-27: trigger_correction in wrong state returns INVALID_STATE", async () => {
+  it("CA-28: trigger_correction in wrong state returns INVALID_STATE", async () => {
     const adminWs = await connectWs(server);
     await authenticate(adminWs, "admin-1", "admin");
 
@@ -557,7 +571,7 @@ describe("trigger_correction", () => {
     expect(msg.code).toBe("INVALID_STATE");
   });
 
-  it("CA-28: trigger_correction while timer running and not all answered returns ANSWERS_PENDING", async () => {
+  it("CA-29: trigger_correction while timer running and not all answered returns ANSWERS_PENDING", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
 
     const adminWs = await connectWs(server);
@@ -589,10 +603,10 @@ describe("trigger_correction", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-31 — trigger_next_question error case
+// CA-32 — trigger_next_question error case
 // ---------------------------------------------------------------------------
 describe("trigger_next_question", () => {
-  it("CA-31: trigger_next_question in wrong state returns INVALID_STATE", async () => {
+  it("CA-32: trigger_next_question in wrong state returns INVALID_STATE", async () => {
     const adminWs = await connectWs(server);
     await authenticate(adminWs, "admin-1", "admin");
 
@@ -604,7 +618,7 @@ describe("trigger_next_question", () => {
     expect(msg.code).toBe("INVALID_STATE");
   });
 
-  it("CA-29: trigger_next_question increments question index and returns to OPEN", async () => {
+  it("CA-30: trigger_next_question increments question index and returns to OPEN", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_CLOSED' WHERE GAM_ID = ?").run("gam-1");
 
     const adminWs = await connectWs(server);
@@ -618,7 +632,7 @@ describe("trigger_next_question", () => {
     expect(row.GAM_CURRENT_QUESTION_INDEX).toBe(1);
   });
 
-  it("CA-30: trigger_next_question on last question transitions to COMPLETED", async () => {
+  it("CA-31: trigger_next_question on last question transitions to COMPLETED", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_CLOSED', GAM_CURRENT_QUESTION_INDEX = 2 WHERE GAM_ID = ?").run("gam-1");
 
     const adminWs = await connectWs(server);
@@ -633,10 +647,10 @@ describe("trigger_next_question", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-24 / CA-25 — Full correction flow: results sent to buzzers and admin
+// CA-25 / CA-26 — Full correction flow: results sent to buzzers and admin
 // ---------------------------------------------------------------------------
 describe("trigger_correction — full result flow", () => {
-  it("CA-24 + CA-25: sends question_result to each buzzer and question_result_summary to admin", async () => {
+  it("CA-25 + CA-26: sends question_result to each buzzer and question_result_summary to admin", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
 
     const adminWs = await connectWs(server);
@@ -735,9 +749,9 @@ describe("CA-11 — timer expiration", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CA-36 — Crash recovery: game in QUESTION_OPEN reset to OPEN on server start
+// CA-37 — Crash recovery: game in QUESTION_OPEN reset to OPEN on server start
 // ---------------------------------------------------------------------------
-describe("CA-36 — crash recovery", () => {
+describe("CA-37 — crash recovery", () => {
   it("should recover a game stuck in QUESTION_OPEN on server startup", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN', GAM_CURRENT_QUESTION_INDEX = 1 WHERE GAM_ID = ?").run("gam-1");
 
