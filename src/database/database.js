@@ -135,5 +135,13 @@ export function openDatabase(dbPath = DEFAULT_DB_PATH) {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+
+  // Migration: add GAM_LAST_UPDATED_AT to T_GAME_GAM for databases created
+  // before this column existed (CREATE TABLE IF NOT EXISTS won't alter existing tables).
+  const columns = db.pragma("table_info(T_GAME_GAM)");
+  if (!columns.some((col) => col.name === "GAM_LAST_UPDATED_AT")) {
+    db.exec("ALTER TABLE T_GAME_GAM ADD COLUMN GAM_LAST_UPDATED_AT TEXT DEFAULT NULL");
+  }
+
   return db;
 }
