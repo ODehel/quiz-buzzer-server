@@ -2,6 +2,7 @@ import { jest } from "@jest/globals";
 import { openDatabase } from "../src/database/database.js";
 import { createGameOrchestrator } from "../src/game/gameOrchestrator.js";
 import { persistWithRetry } from "../src/game/persistWithRetry.js";
+import { recoverInterruptedGame } from "../src/game/gameRecovery.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -138,24 +139,28 @@ describe("gameOrchestrator — CA-35 IN_ERROR on persist failure", () => {
   });
 });
 
-// ─── CA-36: crash recovery ────────────────────────────────────────────────────
+// ─── CA-36: crash recovery (US-019 — now uses recoverInterruptedGame) ────────
 
 describe("gameOrchestrator — CA-36 crash recovery", () => {
   let db;
+  let logSpy;
 
-  beforeEach(() => { db = createTestDb(); });
-  afterEach(() => { db.close(); });
+  beforeEach(() => {
+    db = createTestDb();
+    logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    db.close();
+    logSpy.mockRestore();
+  });
 
   it("CA-36: game in QUESTION_TITLE after crash → resets to OPEN", () => {
     db.prepare(
       "UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE', GAM_CURRENT_QUESTION_INDEX = 2 WHERE GAM_ID = ?"
     ).run("gam-1");
 
-    const mock = createMockSend();
-    const orch = createGameOrchestrator(db, mock);
-    const recovered = orch.recoverFromCrash();
+    recoverInterruptedGame(db);
 
-    expect(recovered).toBe(true);
     expect(getGameRow(db).GAM_STATUS).toBe("OPEN");
     expect(getGameRow(db).GAM_CURRENT_QUESTION_INDEX).toBe(2);
   });
@@ -165,33 +170,28 @@ describe("gameOrchestrator — CA-36 crash recovery", () => {
       "UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN', GAM_CURRENT_QUESTION_INDEX = 3 WHERE GAM_ID = ?"
     ).run("gam-1");
 
-    const mock = createMockSend();
-    const orch = createGameOrchestrator(db, mock);
-    const recovered = orch.recoverFromCrash();
+    recoverInterruptedGame(db);
 
-    expect(recovered).toBe(true);
     expect(getGameRow(db).GAM_STATUS).toBe("OPEN");
     expect(getGameRow(db).GAM_CURRENT_QUESTION_INDEX).toBe(3);
   });
 
   it("CA-36: game in OPEN state → no recovery needed", () => {
-    const mock = createMockSend();
-    const orch = createGameOrchestrator(db, mock);
-    expect(orch.recoverFromCrash()).toBe(false);
+    recoverInterruptedGame(db);
+    expect(getGameRow(db).GAM_STATUS).toBe("OPEN");
   });
 
-  it("CA-36: game in QUESTION_CLOSED → no recovery needed", () => {
-    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_CLOSED' WHERE GAM_ID = ?").run("gam-1");
-    const mock = createMockSend();
-    const orch = createGameOrchestrator(db, mock);
-    expect(orch.recoverFromCrash()).toBe(false);
+  it("CA-36: game in QUESTION_CLOSED → recovers to OPEN, index + 1", () => {
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_CLOSED', GAM_CURRENT_QUESTION_INDEX = 2 WHERE GAM_ID = ?").run("gam-1");
+    recoverInterruptedGame(db);
+    expect(getGameRow(db).GAM_STATUS).toBe("OPEN");
+    expect(getGameRow(db).GAM_CURRENT_QUESTION_INDEX).toBe(3);
   });
 
   it("CA-36: no active game → no recovery needed", () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'COMPLETED' WHERE GAM_ID = ?").run("gam-1");
-    const mock = createMockSend();
-    const orch = createGameOrchestrator(db, mock);
-    expect(orch.recoverFromCrash()).toBe(false);
+    recoverInterruptedGame(db);
+    expect(getGameRow(db).GAM_STATUS).toBe("COMPLETED");
   });
 
   it("CA-36: after recovery, normal workflow resumes", () => {
@@ -199,9 +199,10 @@ describe("gameOrchestrator — CA-36 crash recovery", () => {
       "UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN', GAM_CURRENT_QUESTION_INDEX = 0 WHERE GAM_ID = ?"
     ).run("gam-1");
 
+    recoverInterruptedGame(db);
+
     const mock = createMockSend();
     const orch = createGameOrchestrator(db, mock);
-    orch.recoverFromCrash();
 
     expect(orch.handleTriggerTitle().ok).toBe(true);
     expect(getGameRow(db).GAM_STATUS).toBe("QUESTION_TITLE");

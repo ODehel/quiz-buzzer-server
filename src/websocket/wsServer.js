@@ -10,6 +10,7 @@ import { RateLimiter } from "../middlewares/rateLimiter.js";
 import { startHeartbeat, stopHeartbeat } from "./ws-heartbeat.js";
 import { SYSTEM_SOUNDS } from "../constants/systemSounds.js";
 import { broadcastSystemSoundToBuzzers, sendSystemSound } from "../utils/soundUtils.js";
+import { syncGameStateOnConnect } from "../game/gameSync.js";
 
 export const MAX_BUZZERS = 10;
 export const AUTH_TIMEOUT_MS = 60_000;
@@ -147,9 +148,6 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
   // ── Orchestrator ──────────────────────────────────────────────────────────
 
   const orchestrator = createGameOrchestrator(db, sender, orchestratorOptions);
-
-  // CA-36: recover any interrupted game on startup
-  orchestrator.recoverFromCrash();
 
   // Tracks when the current question's choices were shown (used to compute timeMs for answers)
   let questionStartedAtMs = null;
@@ -659,6 +657,11 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         username: user.USR_USERNAME,
         expires_in: expiresIn,
       }));
+
+      // US-019: Synchronisation de l'état de jeu après auth_success
+      syncGameStateOnConnect(ws, tokenRole, user.USR_USERNAME, db, {
+        getTimerInfo: () => orchestrator.getTimerInfo(),
+      });
 
       // Start heartbeat after successful authentication (US-015 CA-1)
       startHeartbeat(ws, { username: user.USR_USERNAME, role: tokenRole }, { ...heartbeatOptions, ip });

@@ -49,6 +49,9 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
   /** Current question being played (cached) */
   let currentQuestion = null;
 
+  /** Timer info for reconnection sync (US-019 CA-13) */
+  let timerInfo = null;
+
   // ── Internal helpers ────────────────────────────────────────────────────
 
   function errorResult(code, message) {
@@ -87,6 +90,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
       currentTimer.stop();
       currentTimer = null;
     }
+    timerInfo = null;
   }
 
   /**
@@ -199,6 +203,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     });
 
     const { startedAt } = currentTimer.start();
+    timerInfo = { startedAt, timeLimit: question.QST_TIME_LIMIT };
 
     // Broadcast question_open (US-012 CA-5)
     sender.broadcast({
@@ -232,12 +237,14 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
       });
       sender.sendToAdmin({ type: "timer_end" });
       currentTimer = null;
+      timerInfo = null;
     } else {
       // CA-9: timer expires during QUESTION_OPEN → normal expiration
       sender.broadcast({ type: "timer_end" });
       // US-018 CA-6: play TIMER_END on all buzzers
       sender.broadcastSystemSound?.("TIMER_END");
       currentTimer = null;
+      timerInfo = null;
       // Close the question with no winner
       closeSpeedQuestionNoWinner(game);
     }
@@ -329,10 +336,12 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
         // US-018 CA-6: play TIMER_END on all buzzers
         sender.broadcastSystemSound?.("TIMER_END");
         currentTimer = null;
+        timerInfo = null;
       },
     });
 
     const { startedAt } = currentTimer.start();
+    timerInfo = { startedAt, timeLimit: question.QST_TIME_LIMIT };
 
     // Broadcast question_choices (CA-9)
     sender.broadcast({
@@ -759,25 +768,16 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     return index >= 0 ? letters[index] : question.QST_CORRECT_ANSWER;
   }
 
-  // ── recoverFromCrash ──────────────────────────────────────────────────
+  // ── getTimerInfo (US-019 CA-13) ────────────────────────────────────────
 
   /**
-   * Récupère une partie interrompue par un crash serveur.
-   * Si la partie était en QUESTION_TITLE, QUESTION_OPEN ou QUESTION_BUZZED
-   * (question non terminée), elle est ramenée en OPEN au même index.
+   * Retourne les informations du chronomètre actif pour la synchronisation
+   * à la reconnexion (game_state_sync avec started_at et time_limit).
    *
-   * @returns {boolean} true si une récupération a été effectuée
+   * @returns {{ startedAt: string, timeLimit: number } | null}
    */
-  function recoverFromCrash() {
-    const game = loadActiveGame();
-    if (!game) return false;
-
-    const interruptedStates = new Set(["QUESTION_TITLE", "QUESTION_OPEN", "QUESTION_BUZZED"]);
-    if (!interruptedStates.has(game.GAM_STATUS)) return false;
-
-    // Reset to OPEN — the question will be replayed from the beginning
-    updateGameStatus(db, game.GAM_ID, "OPEN");
-    return true;
+  function getTimerInfo() {
+    return timerInfo;
   }
 
   // ── trigger_intermediate_ranking (US-014) ────────────────────────────────
@@ -826,7 +826,7 @@ export function createGameOrchestrator(db, sender, { persistFn, retryOptions } =
     handleValidateAnswer,
     handleInvalidateAnswer,
     handleTriggerIntermediateRanking,
-    recoverFromCrash,
+    getTimerInfo,
     cleanupGameState,
   };
 }
