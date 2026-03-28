@@ -16,6 +16,22 @@ import logger from "../../src/config/logger.js";
 const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 
 // ---------------------------------------------------------------------------
+// Ensure every timer created in this worker is .unref()'d so that leaked
+// timers (game timer, heartbeat, token refresh, persistWithRetry, …) can
+// never prevent the Jest worker from exiting.
+// ---------------------------------------------------------------------------
+const _origSetTimeout = globalThis.setTimeout;
+const _origSetInterval = globalThis.setInterval;
+
+globalThis.setTimeout = (fn, ms, ...args) => _origSetTimeout(fn, ms, ...args).unref();
+globalThis.setInterval = (fn, ms, ...args) => _origSetInterval(fn, ms, ...args).unref();
+
+afterAll(() => {
+  globalThis.setTimeout = _origSetTimeout;
+  globalThis.setInterval = _origSetInterval;
+});
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
@@ -85,27 +101,11 @@ function makeToken(sub, role) {
   return jwt.sign({ sub, role }, JWT_SECRET, { algorithm: "HS256", expiresIn: 3600 });
 }
 
-// Timer helpers that call .unref() so leaked timers never block Jest exit
-function unrefSetTimeout(fn, ms) {
-  return setTimeout(fn, ms).unref();
-}
-function unrefSetInterval(fn, ms) {
-  return setInterval(fn, ms).unref();
-}
-
 async function startServer(db, opts = {}) {
   const server = createServer();
   const wss = attachWebSocket(server, db, JWT_SECRET, {
     authTimeoutMs: 100,
     orchestratorOptions: { retryOptions: { maxRetries: 3, baseDelayMs: 1 } },
-    heartbeatOptions: {
-      setIntervalFn: unrefSetInterval,
-      clearIntervalFn: clearInterval,
-    },
-    tokenTimerOptions: {
-      setTimeoutFn: unrefSetTimeout,
-      clearTimeoutFn: clearTimeout,
-    },
     ...opts,
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
