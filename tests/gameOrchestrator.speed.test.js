@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import { openDatabase } from "../src/database/database.js";
 import { createGameOrchestrator } from "../src/game/gameOrchestrator.js";
+import { recoverInterruptedGame } from "../src/game/gameRecovery.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -598,17 +599,16 @@ describe("gameOrchestrator — SPEED workflow", () => {
     });
   });
 
-  // ── recoverFromCrash ──────────────────────────────────────────────────────
+  // ── recoverFromCrash (US-019 — now uses recoverInterruptedGame) ──────────
 
   describe("recoverFromCrash — QUESTION_BUZZED", () => {
+    let logSpy;
+    beforeEach(() => { logSpy = jest.spyOn(console, "log").mockImplementation(() => {}); });
+    afterEach(() => { logSpy.mockRestore(); });
+
     it("recovers from QUESTION_BUZZED to OPEN", () => {
       db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_BUZZED' WHERE GAM_ID = 'gam-1'").run();
-      const sender = createMockSend();
-      const orch = createGameOrchestrator(db, sender, {
-        retryOptions: { baseDelayMs: 0 },
-      });
-      const recovered = orch.recoverFromCrash();
-      expect(recovered).toBe(true);
+      recoverInterruptedGame(db);
       expect(getGameRow(db).GAM_STATUS).toBe("OPEN");
     });
   });

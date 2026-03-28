@@ -9,6 +9,7 @@ import { openDatabase } from "../src/database/database.js";
 import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { attachWebSocket } from "../src/websocket/wsServer.js";
+import { recoverInterruptedGame } from "../src/game/gameRecovery.js";
 
 const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 
@@ -751,16 +752,16 @@ describe("CA-11 — timer expiration", () => {
 // ---------------------------------------------------------------------------
 // CA-37 — Crash recovery: game in QUESTION_OPEN reset to OPEN on server start
 // ---------------------------------------------------------------------------
-describe("CA-37 — crash recovery", () => {
+describe("CA-37 — crash recovery (US-019 — recoverInterruptedGame before server start)", () => {
   it("should recover a game stuck in QUESTION_OPEN on server startup", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_OPEN', GAM_CURRENT_QUESTION_INDEX = 1 WHERE GAM_ID = ?").run("gam-1");
 
-    // Create a new server (triggers recoverFromCrash)
+    // US-019 CA-8: recovery runs before HTTP/WebSocket accepts connections
+    recoverInterruptedGame(db);
+
     const newServer = createServer();
     attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
     await new Promise((r) => newServer.listen(0, "127.0.0.1", r));
-
-    await new Promise((r) => setTimeout(r, 20));
 
     const row = db.prepare("SELECT GAM_STATUS, GAM_CURRENT_QUESTION_INDEX FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
     expect(row.GAM_STATUS).toBe("OPEN");
@@ -772,11 +773,12 @@ describe("CA-37 — crash recovery", () => {
   it("should recover a game stuck in QUESTION_TITLE on server startup", async () => {
     db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
 
+    // US-019 CA-8: recovery runs before HTTP/WebSocket accepts connections
+    recoverInterruptedGame(db);
+
     const newServer = createServer();
     attachWebSocket(newServer, db, JWT_SECRET, { authTimeoutMs: 100 });
     await new Promise((r) => newServer.listen(0, "127.0.0.1", r));
-
-    await new Promise((r) => setTimeout(r, 20));
 
     const row = db.prepare("SELECT GAM_STATUS FROM T_GAME_GAM WHERE GAM_ID = ?").get("gam-1");
     expect(row.GAM_STATUS).toBe("OPEN");

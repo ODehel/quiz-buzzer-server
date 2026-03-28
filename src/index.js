@@ -20,6 +20,7 @@ import {
 } from "./routes/questionRoute.js";
 import { startServer } from "./server.js";
 import { attachWebSocket } from "./websocket/wsServer.js";
+import { recoverInterruptedGame } from "./game/gameRecovery.js";
 import { ensureUploadsDirectory } from "./middlewares/upload.js";
 import {
   createQuizzesCollectionHandler,
@@ -241,6 +242,9 @@ function requestHandler(req, res) {
     message: "The requested resource was not found.",
   }));
 }
+
+// US-019 CA-8: Reprise de partie interrompue AVANT l'ouverture des connexions
+recoverInterruptedGame(db);
 
 startServer({ port: config.port, requestHandler })
   .then((server) => {
