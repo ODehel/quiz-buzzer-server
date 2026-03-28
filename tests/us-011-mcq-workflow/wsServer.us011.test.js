@@ -16,6 +16,36 @@ import logger from "../../src/config/logger.js";
 const JWT_SECRET = "a-test-secret-that-is-at-least-32-characters-long!!";
 
 // ---------------------------------------------------------------------------
+// Prevent leaked timers and sockets from blocking Jest worker exit.
+//
+// 1. All setTimeout/setInterval calls are wrapped with .unref() so that
+//    game timers, heartbeat intervals, token-refresh timeouts, and retry
+//    delays can never keep the Node.js event loop alive on their own.
+//
+// 2. After all tests, any remaining active handle whose underlying native
+//    resource (_handle) is still ref'd is unref'd — this covers TCP sockets
+//    and closed HTTP servers that Node.js retains after close()/destroy().
+// ---------------------------------------------------------------------------
+const _origSetTimeout = globalThis.setTimeout;
+const _origSetInterval = globalThis.setInterval;
+
+globalThis.setTimeout = (fn, ms, ...args) => _origSetTimeout(fn, ms, ...args).unref();
+globalThis.setInterval = (fn, ms, ...args) => _origSetInterval(fn, ms, ...args).unref();
+
+afterAll(() => {
+  globalThis.setTimeout = _origSetTimeout;
+  globalThis.setInterval = _origSetInterval;
+
+  for (const h of process._getActiveHandles()) {
+    // Unref lingering native TCP/server handles from our tests, but skip
+    // handles that have no _handle (already fully closed).
+    if (h?._handle && typeof h._handle.unref === "function") {
+      h._handle.unref();
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
