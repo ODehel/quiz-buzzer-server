@@ -59,7 +59,7 @@ function validateAllowedFields(body, allowedFields) {
 /**
  * Gestion centralisée des erreurs.
  */
-function handleError(res, err) {
+function handleError(req, res, err) {
   if (err instanceof AppError) {
     sendError(res, err);
   } else {
@@ -68,6 +68,7 @@ function handleError(res, err) {
       status: 500,
       error: "INTERNAL_SERVER_ERROR",
       message: "An unexpected error occurred. Please try again later.",
+      correlation_id: req.correlationId,
     });
   }
 }
@@ -136,7 +137,7 @@ export function createQuizzesCollectionHandler(db, config, authenticate, authori
       const quiz = createQuiz(db, body.name, body.question_ids);
       sendJson(res, 201, quiz);
     } catch (err) {
-      handleError(res, err);
+      handleError(req, res, err);
     }
   };
 }
@@ -211,7 +212,7 @@ export function createQuizResourceHandler(db, config, authenticate, authorize, r
       const quiz = updateQuizById(db, id, body.name, body.question_ids, body.id);
       sendJson(res, 200, quiz);
     } catch (err) {
-      handleError(res, err);
+      handleError(req, res, err);
     }
   };
 }

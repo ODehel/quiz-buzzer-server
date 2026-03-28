@@ -109,6 +109,7 @@ export function createTokenHandler(db, config, rateLimiter) {
           status: 500,
           error: "INTERNAL_SERVER_ERROR",
           message: "An unexpected error occurred. Please try again later.",
+          correlation_id: req.correlationId,
         });
       }
     }

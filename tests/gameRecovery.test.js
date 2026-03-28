@@ -1,6 +1,7 @@
 import { jest } from "@jest/globals";
 import { openDatabase } from "../src/database/database.js";
 import { recoverInterruptedGame } from "../src/game/gameRecovery.js";
+import logger from "../src/config/logger.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -30,8 +31,8 @@ let logInfoSpy;
 let logErrorSpy;
 
 beforeEach(() => {
-  logInfoSpy = jest.spyOn(console, "log").mockImplementation(() => {});
-  logErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  logInfoSpy = jest.spyOn(logger, "info").mockImplementation(() => {});
+  logErrorSpy = jest.spyOn(logger, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -52,7 +53,7 @@ describe("recoverInterruptedGame", () => {
     const game = getGame(db);
     expect(game.GAM_STATUS).toBe("OPEN");
     expect(logInfoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("GAME_RECOVERY_NONE")
+      expect.objectContaining({ event: "GAME_RECOVERY_NONE" })
     );
   });
 
@@ -67,14 +68,16 @@ describe("recoverInterruptedGame", () => {
     expect(game.GAM_STATUS).toBe("OPEN");
     expect(game.GAM_CURRENT_QUESTION_INDEX).toBe(3);
     expect(logInfoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("GAME_RECOVERED")
+      expect.objectContaining({ event: "GAME_RECOVERED" })
     );
     // CA-21: Vérifier les données du log
-    const logCall = logInfoSpy.mock.calls.find((c) => c[0].includes("GAME_RECOVERED"));
-    const logData = JSON.parse(logCall[0]);
-    expect(logData.game_id).toBe("gam-1");
-    expect(logData.old_status).toBe("QUESTION_OPEN");
-    expect(logData.new_question_index).toBe(3);
+    const logCall = logInfoSpy.mock.calls.find((c) => c[0]?.event === "GAME_RECOVERED");
+    expect(logCall).toBeDefined();
+    expect(logCall[0]).toEqual(expect.objectContaining({
+      game_id: "gam-1",
+      old_status: "QUESTION_OPEN",
+      new_question_index: 3,
+    }));
   });
 
   // CA-2: Partie en QUESTION_TITLE
@@ -136,7 +139,7 @@ describe("recoverInterruptedGame", () => {
     expect(game.GAM_STATUS).toBe("IN_ERROR");
     expect(game.GAM_CURRENT_QUESTION_INDEX).toBe(2);
     expect(logInfoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("GAME_RECOVERY_NONE")
+      expect.objectContaining({ event: "GAME_RECOVERY_NONE" })
     );
   });
 
@@ -174,7 +177,7 @@ describe("recoverInterruptedGame", () => {
     expect(() => recoverInterruptedGame(db)).not.toThrow();
 
     expect(logErrorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("GAME_RECOVERY_FAILED")
+      expect.objectContaining({ event: "GAME_RECOVERY_FAILED" })
     );
   });
 
@@ -185,7 +188,7 @@ describe("recoverInterruptedGame", () => {
     recoverInterruptedGame(db);
 
     expect(logInfoSpy).toHaveBeenCalledWith(
-      expect.stringContaining("GAME_RECOVERY_NONE")
+      expect.objectContaining({ event: "GAME_RECOVERY_NONE" })
     );
   });
 

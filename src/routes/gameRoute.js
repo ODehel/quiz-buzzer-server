@@ -68,7 +68,7 @@ function parsePagination(url) {
  * @param {import("node:http").ServerResponse} res
  * @param {unknown} err
  */
-function handleError(res, err) {
+function handleError(req, res, err) {
   if (err instanceof AppError) {
     sendError(res, err);
   } else {
@@ -77,6 +77,7 @@ function handleError(res, err) {
       status: 500,
       error: "INTERNAL_SERVER_ERROR",
       message: "An unexpected error occurred. Please try again later.",
+      correlation_id: req.correlationId,
     });
   }
 }
@@ -156,7 +157,7 @@ export function createGamesCollectionHandler(db, config, authenticate, authorize
       const game = getGameById(db, id);
       sendJson(res, 201, game);
     } catch (err) {
-      handleError(res, err);
+      handleError(req, res, err);
     }
   };
 }
@@ -264,7 +265,7 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
       }
       sendJson(res, 200, result);
     } catch (err) {
-      handleError(res, err);
+      handleError(req, res, err);
     }
   };
 }
@@ -321,7 +322,7 @@ export function createGameResultsHandler(db, config, authenticate, authorize, ra
 
       sendJson(res, 200, getGameResults(db, id));
     } catch (err) {
-      handleError(res, err);
+      handleError(req, res, err);
     }
   };
 }

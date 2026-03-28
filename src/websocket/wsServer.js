@@ -1,7 +1,9 @@
 import { WebSocketServer, WebSocket } from "ws";
 import jwt from "jsonwebtoken";
+import { v7 as uuidv7 } from "uuid";
 import { findById } from "../repositories/userRepository.js";
 import { logInfo, logWarn, logError } from "../utils/logger.js";
+import logger from "../config/logger.js";
 import { createGameOrchestrator } from "../game/gameOrchestrator.js";
 import { findActiveGame } from "../repositories/gameanswerRepository.js";
 import { findParticipantsByGameId } from "../repositories/gameRepository.js";
@@ -12,6 +14,7 @@ import { SYSTEM_SOUNDS } from "../constants/systemSounds.js";
 import { broadcastSystemSoundToBuzzers, sendSystemSound } from "../utils/soundUtils.js";
 import { syncGameStateOnConnect } from "../game/gameSync.js";
 import { scheduleTokenTimers, clearTokenTimers, handleAuthRefresh } from "./tokenRefreshHandler.js";
+import { runWithCorrelationId } from "../utils/correlationStore.js";
 
 export const MAX_BUZZERS = 10;
 export const AUTH_TIMEOUT_MS = 60_000;
@@ -66,7 +69,10 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
 
   function sendJson(ws, msg) {
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(msg));
+      const payload = JSON.stringify(msg);
+      // CA-26: log messages WebSocket sortants en DEBUG
+      logger.debug({ event: "WEBSOCKET_MESSAGE_SENT", type: msg.type, raw: payload });
+      ws.send(payload);
     }
   }
 
@@ -546,27 +552,43 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     ws.on("message", (data) => {
       // Post-auth: route auth_refresh or game message handler
       if (sub !== null) {
-        // CA-20: parse JSON; ignore invalid JSON silently with WARN
-        let msg;
-        try {
-          msg = JSON.parse(data.toString());
-        } catch {
-          logWarn("GAME_MESSAGE_IGNORED", { reason: "Invalid JSON", sub });
-          return;
-        }
+        // CA-23: chaque message WS reçoit un correlation_id UUIDv7 unique
+        const wsCorrelationId = uuidv7();
+        const entry = registry.get(sub);
+        const rawData = data.toString();
 
-        // US-021: handle auth_refresh on existing connection
-        if (msg && msg.type === "auth_refresh") {
+        // CA-25: log du message entrant en DEBUG
+        logger.debug({
+          event: "WEBSOCKET_MESSAGE_RECEIVED",
+          raw: rawData,
+          username: entry?.username,
+          correlation_id: wsCorrelationId,
+        });
+
+        // CA-24: propager le correlation_id dans le contexte de traitement
+        runWithCorrelationId(wsCorrelationId, () => {
+          // CA-20: parse JSON; ignore invalid JSON silently with WARN
+          let msg;
           try {
-            handleAuthRefresh(msg, ws, sub, registry, jwtSecret, tokenTimerOptions);
-          } catch (err) {
-            logError("INTERNAL_ERROR", { message: err.message });
-            ws.close(1011, "Internal server error.");
+            msg = JSON.parse(rawData);
+          } catch {
+            logWarn("GAME_MESSAGE_IGNORED", { reason: "Invalid JSON", sub });
+            return;
           }
-          return;
-        }
 
-        handleGameMessage(data, sub, ws);
+          // US-021: handle auth_refresh on existing connection
+          if (msg && msg.type === "auth_refresh") {
+            try {
+              handleAuthRefresh(msg, ws, sub, registry, jwtSecret, tokenTimerOptions);
+            } catch (err) {
+              logError("INTERNAL_ERROR", { message: err.message });
+              ws.close(1011, "Internal server error.");
+            }
+            return;
+          }
+
+          handleGameMessage(data, sub, ws);
+        });
         return;
       }
 

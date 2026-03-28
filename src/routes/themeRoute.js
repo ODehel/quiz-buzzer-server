@@ -54,7 +54,7 @@ function parsePagination(url) {
 /**
  * Gestion centralisée des erreurs pour les handlers de thèmes.
  */
-function handleError(res, err) {
+function handleError(req, res, err) {
   if (err instanceof AppError) {
     sendError(res, err);
   } else {
@@ -63,6 +63,7 @@ function handleError(res, err) {
       status: 500,
       error: "INTERNAL_SERVER_ERROR",
       message: "An unexpected error occurred. Please try again later.",
+      correlation_id: req.correlationId,
     });
   }
 }
@@ -130,7 +131,7 @@ export function createThemesCollectionHandler(db, config, authenticate, authoriz
       sendJson(res, 200, result);
 
     } catch (err) {
-      handleError(res, err);
+      handleError(req, res, err);
     }
   };
 }
@@ -217,7 +218,7 @@ export function createThemeResourceHandler(db, config, authenticate, authorize, 
       res.end();
 
     } catch (err) {
-      handleError(res, err);
+      handleError(req, res, err);
     }
   };
 }
