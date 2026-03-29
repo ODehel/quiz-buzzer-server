@@ -34,9 +34,10 @@ const TIMER_STATUSES = new Set(["QUESTION_OPEN", "QUESTION_BUZZED"]);
  * @param {import("better-sqlite3").Database} db
  * @param {Object} [options]
  * @param {Function} [options.getTimerInfo] - Retourne { startedAt, timeLimit } ou null
+ * @param {string[]} [options.connectedBuzzerUsernames] - Liste des usernames des buzzers connectés
  * @param {Function} [options.sendFn] - Injectable pour les tests
  */
-export function syncGameStateOnConnect(ws, role, username, db, { getTimerInfo, sendFn } = {}) {
+export function syncGameStateOnConnect(ws, role, username, db, { getTimerInfo, connectedBuzzerUsernames, sendFn } = {}) {
   const send = sendFn || ((msg) => ws.send(JSON.stringify(msg)));
 
   // Chercher une partie active
@@ -51,7 +52,7 @@ export function syncGameStateOnConnect(ws, role, username, db, { getTimerInfo, s
   if (!game) return;
 
   if (role === "admin") {
-    syncAdmin(send, game, db, getTimerInfo);
+    syncAdmin(send, game, db, getTimerInfo, connectedBuzzerUsernames);
   } else if (role === "buzzer") {
     syncBuzzer(send, game, username, db);
   }
@@ -60,7 +61,7 @@ export function syncGameStateOnConnect(ws, role, username, db, { getTimerInfo, s
 /**
  * Envoie game_state_sync à Angular (CA-11 à CA-14).
  */
-function syncAdmin(send, game, db, getTimerInfo) {
+function syncAdmin(send, game, db, getTimerInfo, connectedBuzzerUsernames) {
   // CA-14: Participants avec score cumulé
   const participants = db.prepare(
     `SELECT
@@ -89,6 +90,7 @@ function syncAdmin(send, game, db, getTimerInfo) {
       name: p.name,
       cumulative_score: p.cumulative_score,
     })),
+    connected_buzzers: connectedBuzzerUsernames || [],
   };
 
   // CA-13: QUESTION_OPEN ou QUESTION_BUZZED → inclure started_at et time_limit

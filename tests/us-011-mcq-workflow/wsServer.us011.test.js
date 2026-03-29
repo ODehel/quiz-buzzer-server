@@ -435,7 +435,10 @@ describe("trigger_title", () => {
     const buzzerWs = await connectWs(server);
 
     await authenticate(adminWs, "admin-1", "admin");
+    const buzzerConnectedPromise = waitForMessage(adminWs);
     await authenticate(buzzerWs, "buzzer-1", "buzzer");
+    const buzzerConnectedMsg = await buzzerConnectedPromise;
+    expect(buzzerConnectedMsg.type).toBe("buzzer_connected");
 
     const adminMsgPromise = waitForMessage(adminWs);
     const buzzerMsgPromise = waitForMessage(buzzerWs);
@@ -509,7 +512,10 @@ describe("trigger_choices", () => {
     const buzzerWs = await connectWs(server);
 
     await authenticate(adminWs, "admin-1", "admin");
+    const buzzerConnectedPromise = waitForMessage(adminWs);
     await authenticate(buzzerWs, "buzzer-1", "buzzer");
+    const buzzerConnectedMsg = await buzzerConnectedPromise;
+    expect(buzzerConnectedMsg.type).toBe("buzzer_connected");
 
     const adminMsgPromise = waitForMessage(adminWs);
     const buzzerMsgPromise = waitForMessage(buzzerWs);

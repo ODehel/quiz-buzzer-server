@@ -30,6 +30,7 @@ export const WS_CLOSE_SESSION_REPLACED = 4004;
 const ADMIN_MESSAGE_TYPES = new Set([
   "trigger_title", "trigger_choices", "trigger_correction", "trigger_next_question",
   "validate_answer", "invalidate_answer", "trigger_intermediate_ranking",
+  "request_game_state",
 ]);
 
 /** Message types reserved for buzzers (players). */
@@ -239,6 +240,19 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     // CA-38: admin sending buzzer-only message → ignore, WARN
     if (role === "admin" && BUZZER_MESSAGE_TYPES.has(type)) {
       logWarn("GAME_MESSAGE_IGNORED", { reason: "Role not allowed to send this message type", role, type, sub });
+      return;
+    }
+
+    // Handle request_game_state: admin requests a fresh game_state_sync
+    if (type === "request_game_state") {
+      if (role === "buzzer") {
+        logWarn("GAME_MESSAGE_IGNORED", { reason: "Role not allowed to send this message type", role, type, sub });
+        return;
+      }
+      syncGameStateOnConnect(ws, "admin", null, db, {
+        getTimerInfo: () => orchestrator.getTimerInfo(),
+        connectedBuzzerUsernames: getConnectedBuzzerUsernames(),
+      });
       return;
     }
 
@@ -706,9 +720,18 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       // US-021: Schedule token expiration timers
       scheduleTokenTimers(ws, registry.get(sub), decoded.exp, registry, sub, tokenTimerOptions);
 
+      // Notify admin when a buzzer connects
+      if (tokenRole === "buzzer") {
+        sender.sendToAdmin({
+          type: "buzzer_connected",
+          username: user.USR_USERNAME,
+        });
+      }
+
       // US-019: Synchronisation de l'état de jeu après auth_success
       syncGameStateOnConnect(ws, tokenRole, user.USR_USERNAME, db, {
         getTimerInfo: () => orchestrator.getTimerInfo(),
+        connectedBuzzerUsernames: getConnectedBuzzerUsernames(),
       });
 
       // Start heartbeat after successful authentication (US-015 CA-1)
@@ -735,6 +758,15 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
         if (entry && entry.ws === ws) {
           // US-021 CA-4, CA-9: clear token timers on disconnect
           clearTokenTimers(entry, tokenTimerOptions);
+
+          // Notify admin when a buzzer disconnects
+          if (entry.role === "buzzer") {
+            sender.sendToAdmin({
+              type: "buzzer_disconnected",
+              username: entry.username,
+            });
+          }
+
           registry.delete(sub);
           logInfo("WEBSOCKET_DISCONNECTED", {
             username: entry.username,
@@ -753,6 +785,12 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
       }
     });
   });
+
+  function getConnectedBuzzerUsernames() {
+    return [...registry.values()]
+      .filter((c) => c.role === "buzzer")
+      .map((c) => c.username);
+  }
 
   function buzzersConnected() {
     return [...registry.values()].filter((c) => c.role === "buzzer").length;
