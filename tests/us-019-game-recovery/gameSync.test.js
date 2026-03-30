@@ -78,25 +78,28 @@ afterEach(() => {
 // ─── Admin sync tests (CA-10 to CA-15) ──────────────────────────────────────
 
 describe("syncGameStateOnConnect — admin (game_state_sync)", () => {
-  // CA-10: Pas de partie active → rien envoyé
-  test("CA-10: no active game — no message sent", () => {
+  // CA-10: Pas de partie active → connected_buzzers_sync envoyé
+  test("CA-10: no active game — sends connected_buzzers_sync", () => {
     const db = createTestDb();
     const mock = createMockSend();
 
-    syncGameStateOnConnect(null, "admin", "admin_user", db, { sendFn: mock.fn });
+    syncGameStateOnConnect(null, "admin", "admin_user", db, { sendFn: mock.fn, connectedBuzzerUsernames: ["alice"] });
 
-    expect(mock.messages).toHaveLength(0);
+    expect(mock.messages).toHaveLength(1);
+    expect(mock.messages[0].type).toBe("connected_buzzers_sync");
+    expect(mock.messages[0].connected_buzzers).toEqual(["alice"]);
   });
 
-  // CA-10: Partie en PENDING → pas de sync
-  test("CA-10: game in PENDING — no message sent", () => {
+  // CA-10: Partie en PENDING → connected_buzzers_sync (pas de game_state_sync)
+  test("CA-10: game in PENDING — sends connected_buzzers_sync", () => {
     const db = createTestDb();
     insertGame(db, { status: "PENDING" });
     const mock = createMockSend();
 
     syncGameStateOnConnect(null, "admin", "admin_user", db, { sendFn: mock.fn });
 
-    expect(mock.messages).toHaveLength(0);
+    expect(mock.messages).toHaveLength(1);
+    expect(mock.messages[0].type).toBe("connected_buzzers_sync");
   });
 
   // CA-11: Partie en OPEN → game_state_sync sans started_at/time_limit
@@ -235,26 +238,28 @@ describe("syncGameStateOnConnect — admin (game_state_sync)", () => {
     });
   });
 
-  // CA-15: IN_ERROR → pas de game_state_sync
-  test("CA-15: game in IN_ERROR — no message sent", () => {
+  // CA-15: IN_ERROR → connected_buzzers_sync (pas de game_state_sync)
+  test("CA-15: game in IN_ERROR — sends connected_buzzers_sync only", () => {
     const db = createTestDb();
     insertGame(db, { status: "IN_ERROR" });
     const mock = createMockSend();
 
     syncGameStateOnConnect(null, "admin", "admin_user", db, { sendFn: mock.fn });
 
-    expect(mock.messages).toHaveLength(0);
+    expect(mock.messages).toHaveLength(1);
+    expect(mock.messages[0].type).toBe("connected_buzzers_sync");
   });
 
-  // CA-15: COMPLETED → pas de game_state_sync
-  test("CA-15: game in COMPLETED — no message sent", () => {
+  // CA-15: COMPLETED → connected_buzzers_sync (pas de game_state_sync)
+  test("CA-15: game in COMPLETED — sends connected_buzzers_sync only", () => {
     const db = createTestDb();
     insertGame(db, { status: "COMPLETED" });
     const mock = createMockSend();
 
     syncGameStateOnConnect(null, "admin", "admin_user", db, { sendFn: mock.fn });
 
-    expect(mock.messages).toHaveLength(0);
+    expect(mock.messages).toHaveLength(1);
+    expect(mock.messages[0].type).toBe("connected_buzzers_sync");
   });
 
   // CA-24: Log GAME_STATE_SYNC_SENT
