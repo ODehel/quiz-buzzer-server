@@ -48,8 +48,17 @@ export function syncGameStateOnConnect(ws, role, username, db, { getTimerInfo, c
      LIMIT 1`
   ).get();
 
-  // CA-10, CA-15, CA-16, CA-20: pas de partie active → rien
-  if (!game) return;
+  // CA-10, CA-15, CA-16, CA-20: pas de partie active
+  if (!game) {
+    // Envoyer quand même la liste des buzzers connectés à l'admin
+    if (role === "admin") {
+      send({
+        type: "connected_buzzers_sync",
+        connected_buzzers: connectedBuzzerUsernames || [],
+      });
+    }
+    return;
+  }
 
   if (role === "admin") {
     syncAdmin(send, game, db, getTimerInfo, connectedBuzzerUsernames);
