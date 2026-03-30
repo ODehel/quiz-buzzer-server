@@ -28,7 +28,14 @@ export function insertQuestion(db, q) {
  * @returns {Object|undefined}
  */
 export function findQuestionById(db, id) {
-  return db.prepare(`SELECT * FROM T_QUESTION_QST WHERE QST_ID = ?`).get(id);
+  return db
+    .prepare(
+      `SELECT q.*, t.THM_NAME
+       FROM T_QUESTION_QST q
+       LEFT JOIN T_THEME_THM t ON t.THM_ID = q.QST_THEME_ID
+       WHERE q.QST_ID = ?`
+    )
+    .get(id);
 }
 
 /**
@@ -103,7 +110,10 @@ export function findQuestions(db, filters, page, limit) {
   const offset = (page - 1) * limit;
   const data = db
     .prepare(
-      `SELECT * FROM T_QUESTION_QST ${where} ORDER BY QST_ID DESC LIMIT ? OFFSET ?`
+      `SELECT q.*, t.THM_NAME
+       FROM T_QUESTION_QST q
+       LEFT JOIN T_THEME_THM t ON t.THM_ID = q.QST_THEME_ID
+       ${where} ORDER BY q.QST_ID DESC LIMIT ? OFFSET ?`
     )
     .all(...params, limit, offset);
 
