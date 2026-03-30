@@ -143,6 +143,37 @@ export function createGameResourceHandler(db, config, authenticate, authorize, r
 }
 
 /**
+ * Crée le handler POST /api/v1/games/:id/start.
+ * Raccourci pour passer le statut de PENDING à OPEN.
+ *
+ * @param {import("better-sqlite3").Database} db
+ * @param {{ jwtSecret: string }} config
+ * @param {Function} authenticate
+ * @param {Function} authorize
+ * @param {import("../middlewares/rateLimiter.js").RateLimiter} rateLimiter
+ */
+export function createGameStartHandler(db, config, authenticate, authorize, rateLimiter, { onGameStatusChange } = {}) {
+  return async (req, res, url) => {
+    try {
+      if (checkRateLimit(req, res, rateLimiter)) return;
+      if (checkMethod(req, res, ["POST"])) return;
+
+      authenticate(req);
+      authorize(req);
+
+      const match = url.pathname.match(/^\/api\/v1\/games\/([^/]+)\/start$/);
+      const id = match[1];
+
+      const result = updateGame(db, id, { status: "OPEN" });
+      onGameStatusChange?.("OPEN");
+      sendJson(res, 200, result);
+    } catch (err) {
+      handleError(req, res, err);
+    }
+  };
+}
+
+/**
  * Crée le handler GET /api/v1/games/:id/results.
  *
  * @param {import("better-sqlite3").Database} db

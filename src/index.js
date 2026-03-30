@@ -33,6 +33,7 @@ import {
 import {
   createGamesCollectionHandler,
   createGameResourceHandler,
+  createGameStartHandler,
   createGameResultsHandler,
 } from "./routes/gameRoute.js";
 import {
@@ -103,6 +104,12 @@ const gameResourceHandler = createGameResourceHandler(
     onGameDeleted: (gameId) => gameStateNotifier.onGameDeleted?.(gameId),
   }
 );
+const gameStartHandler = createGameStartHandler(
+  db, config, authenticate, authorize, apiRateLimiter,
+  {
+    onGameStatusChange: (status) => gameStateNotifier.onGameStatusChange?.(status),
+  }
+);
 const gameResultsHandler = createGameResultsHandler(
   db, config, authenticate, authorize, apiRateLimiter
 );
@@ -144,8 +151,9 @@ const routes = [
   { path: "/api/v1/quizzes", handler: quizzesCollectionHandler },
   { path: /^\/api\/v1\/quizzes\/[^/]+$/, handler: quizResourceHandler },
 
-  // Games — results avant /:id
+  // Games — start et results avant /:id
   { path: "/api/v1/games", handler: gamesCollectionHandler },
+  { path: /^\/api\/v1\/games\/[^/]+\/start$/, method: "POST", handler: gameStartHandler },
   { path: /^\/api\/v1\/games\/[^/]+\/results$/, handler: gameResultsHandler },
   { path: /^\/api\/v1\/games\/[^/]+$/, handler: gameResourceHandler },
 
