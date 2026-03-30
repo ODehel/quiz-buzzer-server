@@ -143,6 +143,7 @@ export function toApiFormat(row) {
     id: row.QST_ID,
     type: row.QST_TYPE,
     theme_id: row.QST_THEME_ID,
+    theme_name: row.THM_NAME ?? null,
     title: row.QST_TITLE,
   };
 
