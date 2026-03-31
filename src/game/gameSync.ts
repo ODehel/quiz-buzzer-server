@@ -10,7 +10,7 @@
 
 import Database from "better-sqlite3";
 import { WebSocket } from "ws";
-import { WsMessage, TimerInfo, GameStatus, GameSyncOptions } from "../types/index.ts";
+import type { WsMessage, TimerInfo, GameStatus, GameSyncOptions } from "../types/index.ts";
 import { logInfo } from "../utils/logger.ts";
 
 /** Statuts nécessitant les données du chronomètre (CA-13). */

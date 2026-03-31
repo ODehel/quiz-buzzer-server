@@ -13,7 +13,7 @@ import {
 } from "../services/gameService.ts";
 import { parsePagination, validateAllowedFields } from "../utils/validation.ts";
 import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.ts";
-import { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler, GameStatus } from "../types/index.ts";
+import type { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler, GameStatus } from "../types/index.ts";
 import { ServerResponse } from "node:http";
 import Database from "better-sqlite3";
 
@@ -128,10 +128,10 @@ export function createGameResourceHandler(
       const b = body as Record<string, unknown>;
 
       if (req.method === "PUT") {
-        const rawParticipants = b.participants as Array<{ name: string }> | undefined;
+        const rawParticipants = b.participants as Array<string | { name: string }> | undefined;
         const result = updateGame(db, id, {
           status: b.status as GameStatus | undefined,
-          participants: rawParticipants?.map((p) => p.name),
+          participants: rawParticipants?.map((p) => typeof p === "string" ? p : p.name),
           quizId: b.quiz_id as string | undefined,
         });
         // US-018 CA-7/CA-8: notify WebSocket layer of game state change

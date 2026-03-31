@@ -1,7 +1,7 @@
 import { WebSocket } from "ws";
 import { logInfo, logWarn } from "./logger.ts";
 
-import { WsRegistryEntry } from "../types/index.ts";
+import type { WsRegistryEntry } from "../types/index.ts";
 
 /**
  * Sends a play_system_sound message to a single WebSocket connection.

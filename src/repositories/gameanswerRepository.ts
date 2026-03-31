@@ -5,7 +5,7 @@
  */
 
 import Database from "better-sqlite3";
-import { GameAnswerRow, GameAnswerData, GameRow } from "../types/index.ts";
+import type { GameAnswerRow, GameAnswerData, GameRow } from "../types/index.ts";
 
 /**
  * Insère une réponse individuelle.

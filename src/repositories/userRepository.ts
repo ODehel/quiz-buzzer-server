@@ -4,7 +4,7 @@
  */
 
 import Database from "better-sqlite3";
-import { UserRow } from "../types/index.ts";
+import type { UserRow } from "../types/index.ts";
 
 type UserBasic = Pick<UserRow, "USR_ID" | "USR_USERNAME" | "USR_ROLE">;
 type UserWithPassword = Pick<UserRow, "USR_ID" | "USR_USERNAME" | "USR_PASSWORD" | "USR_ROLE">;

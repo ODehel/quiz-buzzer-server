@@ -3,7 +3,7 @@ import bcrypt from "bcrypt";
 import { openDatabase } from "./database/database.ts";
 import { countUsers, insertUser } from "./repositories/userRepository.ts";
 import { v7 as uuidv7 } from "uuid";
-import { SeedUser, SeedDeps, SeedResult } from "./types/index.ts";
+import type { SeedUser, SeedDeps, SeedResult } from "./types/index.ts";
 
 
 const USERS: SeedUser[] = [

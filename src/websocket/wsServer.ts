@@ -3,7 +3,7 @@ import { Server, IncomingMessage } from "node:http";
 import { Duplex } from "node:stream";
 import Database from "better-sqlite3";
 import { v7 as uuidv7 } from "uuid";
-import { HeartbeatOptions } from "../types/index.ts";
+import type { HeartbeatOptions } from "../types/index.ts";
 import { logInfo, logWarn, logError } from "../utils/logger.ts";
 import logger from "../config/logger.ts";
 import { createGameOrchestrator } from "../game/gameOrchestrator.ts";

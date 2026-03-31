@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { HeartbeatOptions } from "../types/index.ts";
+import type { HeartbeatOptions } from "../types/index.ts";
 import { logWarn, logError } from "../utils/logger.ts";
 
 export const HEARTBEAT_INTERVAL_MS = 30_000;

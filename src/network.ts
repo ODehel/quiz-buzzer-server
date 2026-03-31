@@ -1,5 +1,5 @@
 import { networkInterfaces } from "node:os";
-import { NetworkInterfaceInfo } from "node:os";
+import type { NetworkInterfaceInfo } from "node:os";
 
 /**
  * Retourne la première adresse IPv4 locale non-loopback trouvée,

@@ -10,7 +10,7 @@
  * et la reprise (invalidation) via suspend() et resume().
  */
 
-import { IGameTimer } from "../types/index.ts";
+import type { IGameTimer } from "../types/index.ts";
 
 interface GameTimerOptions {
   timeLimitSeconds: number;

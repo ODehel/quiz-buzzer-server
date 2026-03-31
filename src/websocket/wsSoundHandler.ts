@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import Database from "better-sqlite3";
-import { WsMessage, WsRegistryEntry } from "../types/index.ts";
+import type { WsMessage, WsRegistryEntry } from "../types/index.ts";
 import { WsRegistry } from "./wsRegistry.ts";
 import { sendJson } from "./wsGameSender.ts";
 import { logInfo, logWarn } from "../utils/logger.ts";

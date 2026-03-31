@@ -1,4 +1,4 @@
-import { QuestionRow, QuestionApiResponse } from "../types/index.ts";
+import type { QuestionRow, QuestionApiResponse } from "../types/index.ts";
 import { validateUuid, normalizeName as normalizeTitle, parsePagination } from "../utils/validation.ts";
 
 export { validateUuid, normalizeTitle, parsePagination };

@@ -15,7 +15,7 @@ import {
 import { findQuestionById } from "../repositories/questionRepository.ts";
 import { validateUuid, normalizeName, NAME_REGEX } from "../utils/validation.ts";
 import Database from "better-sqlite3";
-import { QuizRow } from "../types/index.ts";
+import type { QuizRow } from "../types/index.ts";
 
 export { validateUuid, normalizeName };
 

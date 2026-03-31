@@ -4,7 +4,7 @@
  */
 
 import Database from "better-sqlite3";
-import { SoundRow } from "../types/index.ts";
+import type { SoundRow } from "../types/index.ts";
 
 interface InsertSoundParams {
   id: string;

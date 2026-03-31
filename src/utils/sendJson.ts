@@ -1,5 +1,5 @@
 import { ServerResponse } from "node:http";
-import { AppRequest } from "../types/index.ts";
+import type { AppRequest } from "../types/index.ts";
 import { AppError } from "../errors/AppError.ts";
 
 /**

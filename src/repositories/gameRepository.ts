@@ -4,7 +4,7 @@
  */
 
 import Database from "better-sqlite3";
-import { GameRow, GameStatus, ParticipantRow } from "../types/index.ts";
+import type { GameRow, GameStatus, ParticipantRow } from "../types/index.ts";
 
 interface InsertGameParams {
   id: string;

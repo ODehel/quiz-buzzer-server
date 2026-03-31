@@ -1,13 +1,12 @@
 import { WebSocket } from "ws";
 import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
-import {
-  JwtPayload,
+import type { JwtPayload,
   UserRow,
   GameSender,
   GameOrchestrator,
   HeartbeatOptions,
-} from "../types/index.ts";
+ } from "../types/index.ts";
 import { WsRegistry, MAX_BUZZERS } from "./wsRegistry.ts";
 import { findById } from "../repositories/userRepository.ts";
 import { logInfo, logWarn, logError } from "../utils/logger.ts";

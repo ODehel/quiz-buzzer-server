@@ -10,7 +10,7 @@
  * Ce module est sans état global : chaque question reçoit un nouveau processeur.
  */
 
-import { IAnswerProcessor, AnswerResult, QuestionResult, RankingEntry } from "../types/index.ts";
+import type { IAnswerProcessor, AnswerResult, QuestionResult, RankingEntry } from "../types/index.ts";
 
 const VALID_ANSWERS = new Set(["A", "B", "C", "D"]);
 

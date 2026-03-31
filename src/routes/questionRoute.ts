@@ -19,7 +19,7 @@ import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.
 import { countQuizzesByQuestion } from "../repositories/quizRepository.ts";
 import { parseMultipartFormData, isValidMediaType } from "../middlewares/upload.ts";
 import { uploadMedia, deleteMedia } from "../services/mediaService.ts";
-import { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler } from "../types/index.ts";
+import type { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler } from "../types/index.ts";
 import { ServerResponse } from "node:http";
 import Database from "better-sqlite3";
 

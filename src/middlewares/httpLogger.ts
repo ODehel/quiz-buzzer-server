@@ -1,6 +1,6 @@
 import logger from "../config/logger.ts";
 import { ServerResponse } from "node:http";
-import { AppRequest } from "../types/index.ts";
+import type { AppRequest } from "../types/index.ts";
 
 /**
  * Wraps an HTTP request handler to log incoming requests (CA-20) and

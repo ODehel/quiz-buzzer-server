@@ -4,7 +4,7 @@
  */
 
 import Database from "better-sqlite3";
-import { QuestionRow, QuestionType } from "../types/index.ts";
+import type { QuestionRow, QuestionType } from "../types/index.ts";
 
 interface InsertQuestionParams {
   id: string;

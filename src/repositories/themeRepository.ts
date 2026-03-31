@@ -4,7 +4,7 @@
  */
 
 import Database from "better-sqlite3";
-import { ThemeRow } from "../types/index.ts";
+import type { ThemeRow } from "../types/index.ts";
 
 interface InsertThemeParams {
   id: string;

@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-import { AppConfig } from "../types/index.ts";
+import type { AppConfig } from "../types/index.ts";
 
 /**
  * Charge et valide les variables d'environnement applicatives.

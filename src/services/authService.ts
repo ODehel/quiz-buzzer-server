@@ -4,7 +4,7 @@ import { generateToken } from "./tokenService.ts";
 import { AppError } from "../errors/AppError.ts";
 import { logInfo, logWarn } from "../utils/logger.ts";
 import Database from "better-sqlite3";
-import { AppConfig, TokenResult } from "../types/index.ts";
+import type { AppConfig, TokenResult } from "../types/index.ts";
 
 /**
  * Hash bidon pré-calculé pour les comparaisons factices.

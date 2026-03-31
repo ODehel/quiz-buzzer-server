@@ -9,7 +9,7 @@
  */
 
 import Database from "better-sqlite3";
-import { GameStatus } from "../types/index.ts";
+import type { GameStatus } from "../types/index.ts";
 import { logInfo, logError } from "../utils/logger.ts";
 
 interface RecoveryGameRow {
