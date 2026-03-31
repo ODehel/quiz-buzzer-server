@@ -1,7 +1,7 @@
 import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
 import { WsRegistryEntry, JwtPayload } from "../types/index.ts";
-import { logInfo, logWarn, logError } from "../utils/logger.ts";
+import { logInfo, logWarn } from "../utils/logger.ts";
 
 export const TOKEN_EXPIRING_SOON_SECONDS = 300;
 
@@ -19,8 +19,8 @@ export function scheduleTokenTimers(
   ws: WebSocket,
   entry: WsRegistryEntry,
   exp: number,
-  registry: Map<string, WsRegistryEntry>,
-  sub: string,
+  _registry: Map<string, WsRegistryEntry>,
+  _sub: string,
   {
     setTimeoutFn = globalThis.setTimeout,
     clearTimeoutFn = globalThis.clearTimeout,

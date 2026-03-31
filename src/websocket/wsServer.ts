@@ -13,14 +13,11 @@ import { clearTokenTimers, handleAuthRefresh } from "./tokenRefreshHandler.ts";
 import { runWithCorrelationId } from "../utils/correlationStore.ts";
 import { broadcastSystemSoundToBuzzers } from "../utils/soundUtils.ts";
 
-import { WsRegistry, MAX_BUZZERS } from "./wsRegistry.ts";
+import { WsRegistry } from "./wsRegistry.ts";
 import { createGameSender, sendJson } from "./wsGameSender.ts";
 import {
   authenticateConnection,
-  WS_CLOSE_INVALID_TOKEN,
-  WS_CLOSE_TOKEN_EXPIRED,
   WS_CLOSE_AUTH_TIMEOUT,
-  WS_CLOSE_SESSION_REPLACED,
   AUTH_TIMEOUT_MS,
 } from "./wsAuth.ts";
 import { createMessageRouter } from "./wsMessageRouter.ts";

@@ -5,7 +5,6 @@ import {
   insertParticipants,
   findGameById,
   findParticipantsByGameId,
-  findAllGames,
   findAllGamesPaginated,
   countActiveGames,
   updateGameStatus,
@@ -19,7 +18,7 @@ import { findAnswersByGame } from "../repositories/gameanswerRepository.ts";
 import { findQuizById } from "../repositories/quizRepository.ts";
 import { validateUuid } from "../utils/validation.ts";
 import Database from "better-sqlite3";
-import { GameRow, ParticipantRow, GameApiResponse, GameAnswerRow, PaginatedResponse, GameStatus } from "../types/index.ts";
+import { GameRow, ParticipantRow, GameApiResponse, PaginatedResponse, GameStatus } from "../types/index.ts";
 
 export { validateUuid };
 
@@ -163,7 +162,7 @@ export function getGameById(db: Database.Database, id: string): GameApiResponse 
 }
 
 interface UpdateGameParams {
-  status?: string;
+  status?: GameStatus;
   participants?: string[];
   quizId?: string;
 }
@@ -221,7 +220,7 @@ interface PatchParticipant {
 }
 
 interface PatchGameParams {
-  status?: string;
+  status?: GameStatus;
   participants?: PatchParticipant[];
   quizId?: string;
 }

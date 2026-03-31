@@ -4,7 +4,7 @@ import { openDatabase } from "./database/database.ts";
 import { countUsers, insertUser } from "./repositories/userRepository.ts";
 import { v7 as uuidv7 } from "uuid";
 import { SeedUser, SeedDeps, SeedResult } from "./types/index.ts";
-import Database from "better-sqlite3";
+
 
 const USERS: SeedUser[] = [
   { username: "admin", role: "admin", envVar: "SEED_PASSWORD_ADMIN" },

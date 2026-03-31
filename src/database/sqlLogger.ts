@@ -71,7 +71,7 @@ export function wrapDatabaseWithLogging(db: Database.Database): Database.Databas
           return wrapStatement(stmt, sql);
         };
       }
-      return (target as Record<string | symbol, unknown>)[prop];
+      return (target as unknown as Record<string | symbol, unknown>)[prop];
     },
   }) as Database.Database;
 }
@@ -85,7 +85,7 @@ function wrapStatement(stmt: Database.Statement, sql: string): Database.Statemen
       if (["run", "get", "all"].includes(prop as string)) {
         return function (...args: SqlParam[]) {
           const start = Date.now();
-          const result = (target as Record<string | symbol, (...a: SqlParam[]) => unknown>)[prop](...args);
+          const result = (target as unknown as Record<string | symbol, (...a: SqlParam[]) => unknown>)[prop](...args);
           const durationMs = Date.now() - start;
           const correlationId = getCorrelationId();
 
@@ -104,7 +104,7 @@ function wrapStatement(stmt: Database.Statement, sql: string): Database.Statemen
           return result;
         };
       }
-      return (target as Record<string | symbol, unknown>)[prop];
+      return (target as unknown as Record<string | symbol, unknown>)[prop];
     },
   }) as Database.Statement;
 }

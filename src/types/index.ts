@@ -7,7 +7,6 @@
  */
 
 import { IncomingMessage, ServerResponse } from "node:http";
-import { Server } from "node:http";
 import Database from "better-sqlite3";
 
 // ── Configuration ────────────────────────────────────────────────────────────

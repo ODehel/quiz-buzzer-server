@@ -24,8 +24,6 @@ import {
   QuestionRow,
   GameRow,
   ParticipantRow,
-  AnswerResult,
-  BuzzResult,
   GameAnswerData,
 } from "../types/index.ts";
 import { findActiveGame, updateGameQuestionIndex, getCumulativeScore } from "../repositories/gameanswerRepository.ts";

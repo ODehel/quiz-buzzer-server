@@ -12,14 +12,6 @@ import Database from "better-sqlite3";
 import { GameStatus } from "../types/index.ts";
 import { logInfo, logError } from "../utils/logger.ts";
 
-/** Statuts intermédiaires nécessitant une reprise. */
-const INTERMEDIATE_STATUSES: GameStatus[] = [
-  "QUESTION_TITLE",
-  "QUESTION_OPEN",
-  "QUESTION_BUZZED",
-  "QUESTION_CLOSED",
-];
-
 interface RecoveryGameRow {
   GAM_ID: string;
   GAM_STATUS: GameStatus;

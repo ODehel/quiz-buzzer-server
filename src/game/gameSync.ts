@@ -13,15 +13,6 @@ import { WebSocket } from "ws";
 import { WsMessage, TimerInfo, GameStatus, GameSyncOptions } from "../types/index.ts";
 import { logInfo } from "../utils/logger.ts";
 
-/** Statuts considérés comme actifs pour la synchronisation. */
-const ACTIVE_STATUSES = new Set<GameStatus>([
-  "OPEN",
-  "QUESTION_TITLE",
-  "QUESTION_OPEN",
-  "QUESTION_BUZZED",
-  "QUESTION_CLOSED",
-]);
-
 /** Statuts nécessitant les données du chronomètre (CA-13). */
 const TIMER_STATUSES = new Set<GameStatus>(["QUESTION_OPEN", "QUESTION_BUZZED"]);
 

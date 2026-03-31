@@ -93,7 +93,7 @@ export function authenticateConnection(
   }
 
   // Resolve username from DB (CA-7 — user might have been deleted)
-  let user: UserRow | undefined;
+  let user: Pick<UserRow, "USR_ID" | "USR_USERNAME" | "USR_ROLE"> | undefined;
   try {
     user = findById(db, tokenSub);
   } catch (err: unknown) {

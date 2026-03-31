@@ -40,7 +40,6 @@ export function createMessageRouter({
   registry,
   db,
   orchestrator,
-  sender,
   sendJson: sendJsonFn,
   getConnectedBuzzerUsernames,
   serverBaseUrl,

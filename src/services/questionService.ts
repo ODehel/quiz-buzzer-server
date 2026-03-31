@@ -13,7 +13,7 @@ import {
 import { deleteMediaFile } from "./mediaService.ts";
 import { validateUuid, normalizeName as normalizeTitle, isValidUuid, parsePagination } from "../utils/validation.ts";
 import Database from "better-sqlite3";
-import { QuestionRow, QuestionApiResponse, PaginatedResponse, QuestionType } from "../types/index.ts";
+import { QuestionApiResponse, PaginatedResponse, QuestionType } from "../types/index.ts";
 
 import {
   ALLOWED_FIELDS_PUT,
@@ -110,7 +110,7 @@ export function createQuestions(db: Database.Database, body: unknown): { created
   // Validate each question individually and prepare DB records
   const now = new Date().toISOString();
   const records: Array<{
-    id: string; type: string; themeId: string; title: string;
+    id: string; type: QuestionType; themeId: string; title: string;
     choiceA: string | null; choiceB: string | null; choiceC: string | null; choiceD: string | null;
     correctAnswer: string; level: number; timeLimit: number; points: number; createdAt: string;
   }> = [];

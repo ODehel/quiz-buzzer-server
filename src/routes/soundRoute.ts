@@ -18,7 +18,7 @@ import Database from "better-sqlite3";
  */
 export function createSoundsCollectionHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -62,7 +62,7 @@ export function createSoundsCollectionHandler(
  */
 export function createSoundResourceHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,

@@ -23,7 +23,7 @@ const ALLOWED_FIELDS_PUT = new Set(["id", "name", "question_ids"]);
  */
 export function createQuizzesCollectionHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -72,7 +72,7 @@ export function createQuizzesCollectionHandler(
  */
 export function createQuizResourceHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,

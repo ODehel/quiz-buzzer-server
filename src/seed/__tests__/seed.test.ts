@@ -35,13 +35,13 @@ function validEnv() {
 }
 
 /** Hash factice ultra-rapide pour les tests (pas besoin de bcrypt réel). */
-const fakeHash = (pwd) => Promise.resolve(`hashed:${pwd}`);
+const fakeHash = (pwd: string) => Promise.resolve(`hashed:${pwd}`);
 
 let idCounter = 0;
 const fakeId = () => `fake-id-${++idCounter}`;
 
 describe("runSeed", () => {
-  let db;
+  let db: Database.Database;
 
   beforeEach(() => {
     db = createTestDb();
@@ -73,7 +73,7 @@ describe("runSeed", () => {
       hashPassword: fakeHash,
     });
 
-    const row = db.prepare("SELECT USR_PASSWORD FROM T_USER_USR WHERE USR_USERNAME = ?").get("admin");
+    const row = db.prepare("SELECT USR_PASSWORD FROM T_USER_USR WHERE USR_USERNAME = ?").get("admin") as { USR_PASSWORD: string };
     expect(row.USR_PASSWORD).toBe("hashed:AdminPassword1!");
     expect(row.USR_PASSWORD).not.toBe("AdminPassword1!");
   });
@@ -122,7 +122,7 @@ describe("runSeed", () => {
 
   // Variable d'environnement manquante
   it("should throw if a password environment variable is missing", async () => {
-    const env = validEnv();
+    const env: Partial<ReturnType<typeof validEnv>> = validEnv();
     delete env.SEED_PASSWORD_BUZZER_05;
 
     await expect(
@@ -140,8 +140,8 @@ describe("runSeed", () => {
       hashPassword: fakeHash,
     });
 
-    const admins = db.prepare("SELECT COUNT(*) AS c FROM T_USER_USR WHERE USR_ROLE = 'admin'").get();
-    const buzzers = db.prepare("SELECT COUNT(*) AS c FROM T_USER_USR WHERE USR_ROLE = 'buzzer'").get();
+    const admins = db.prepare("SELECT COUNT(*) AS c FROM T_USER_USR WHERE USR_ROLE = 'admin'").get() as { c: number };
+    const buzzers = db.prepare("SELECT COUNT(*) AS c FROM T_USER_USR WHERE USR_ROLE = 'buzzer'").get() as { c: number };
 
     expect(admins.c).toBe(1);
     expect(buzzers.c).toBe(10);

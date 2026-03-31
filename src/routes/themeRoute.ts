@@ -23,7 +23,7 @@ const ALLOWED_FIELDS_PUT = new Set(["id", "name"]);
  */
 export function createThemesCollectionHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -70,7 +70,7 @@ export function createThemesCollectionHandler(
  */
 export function createThemeResourceHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,

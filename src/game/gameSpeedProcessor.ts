@@ -78,7 +78,6 @@ interface SpeedSummary {
  * Crée un processeur pour une question SPEED.
  */
 export function createSpeedProcessor({
-  questionId,
   correctAnswer,
   points,
   timeLimitMs,

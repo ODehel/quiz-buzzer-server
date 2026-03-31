@@ -30,15 +30,15 @@ export function withHttpLogger(
 
     // CA-21: log réponse sortante via interception de res.end
     const originalEnd = res.end.bind(res);
-    res.end = function (...endArgs: Parameters<ServerResponse["end"]>): ReturnType<ServerResponse["end"]> {
+    res.end = function (this: ServerResponse, ...endArgs: unknown[]): ServerResponse {
       logger.info({
         event: "HTTP_RESPONSE",
         status: res.statusCode,
         duration_ms: Date.now() - startedAt,
         correlation_id: req.correlationId,
       });
-      return originalEnd(...endArgs);
-    };
+      return (originalEnd as (...a: unknown[]) => ServerResponse)(...endArgs);
+    } as typeof res.end;
 
     handler(req, res, ...args);
   };

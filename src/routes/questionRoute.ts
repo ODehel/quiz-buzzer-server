@@ -28,7 +28,7 @@ import Database from "better-sqlite3";
  */
 export function createQuestionsCollectionHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -69,7 +69,7 @@ export function createQuestionsCollectionHandler(
  */
 export function createQuestionResourceHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -137,7 +137,7 @@ export function createQuestionResourceHandler(
  */
 export function createQuestionsBulkHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -169,7 +169,7 @@ export function createQuestionsBulkHandler(
  */
 export function createMediaUploadHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -220,7 +220,7 @@ export function createMediaUploadHandler(
  */
 export function createMediaDeleteHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,

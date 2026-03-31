@@ -35,7 +35,7 @@ interface GameStartCallbacks {
  */
 export function createGamesCollectionHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -85,7 +85,7 @@ export function createGamesCollectionHandler(
  */
 export function createGameResourceHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -128,9 +128,10 @@ export function createGameResourceHandler(
       const b = body as Record<string, unknown>;
 
       if (req.method === "PUT") {
+        const rawParticipants = b.participants as Array<{ name: string }> | undefined;
         const result = updateGame(db, id, {
           status: b.status as GameStatus | undefined,
-          participants: b.participants as Array<{ name: string }> | undefined,
+          participants: rawParticipants?.map((p) => p.name),
           quizId: b.quiz_id as string | undefined,
         });
         // US-018 CA-7/CA-8: notify WebSocket layer of game state change
@@ -144,7 +145,7 @@ export function createGameResourceHandler(
       // PATCH
       const result = patchGame(db, id, {
         status: b.status as GameStatus | undefined,
-        participants: b.participants as Array<{ name: string }> | undefined,
+        participants: b.participants as Array<{ order: number; name: string }> | undefined,
         quizId: b.quiz_id as string | undefined,
       });
       // US-018 CA-7/CA-8: notify WebSocket layer of game state change
@@ -164,7 +165,7 @@ export function createGameResourceHandler(
  */
 export function createGameStartHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
@@ -195,7 +196,7 @@ export function createGameStartHandler(
  */
 export function createGameResultsHandler(
   db: Database.Database,
-  config: Pick<AppConfig, "jwtSecret">,
+  _config: Pick<AppConfig, "jwtSecret">,
   authenticate: AuthMiddleware,
   authorize: AuthorizeMiddleware,
   rateLimiter: IRateLimiter,
