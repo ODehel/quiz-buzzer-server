@@ -11,10 +11,14 @@
 import Database from "better-sqlite3";
 import { WebSocket } from "ws";
 import type { WsMessage, TimerInfo, GameStatus, GameSyncOptions } from "../types/index.ts";
+import { resolveCurrentQuestion } from "./gameworkflow.ts";
 import { logInfo } from "../utils/logger.ts";
 
 /** Statuts nécessitant les données du chronomètre (CA-13). */
 const TIMER_STATUSES = new Set<GameStatus>(["QUESTION_OPEN", "QUESTION_BUZZED"]);
+
+/** Statuts nécessitant la réponse attendue pour l'admin. */
+const ANSWER_STATUSES = new Set<GameStatus>(["QUESTION_TITLE", "QUESTION_OPEN", "QUESTION_BUZZED"]);
 
 interface GameSyncRow {
   GAM_ID: string;
@@ -118,6 +122,14 @@ function syncAdmin(
     if (timerInfo) {
       msg.started_at = timerInfo.startedAt;
       msg.time_limit = timerInfo.timeLimit;
+    }
+  }
+
+  // Include expected answer for admin during question phases
+  if (ANSWER_STATUSES.has(game.GAM_STATUS)) {
+    const question = resolveCurrentQuestion(db, game.GAM_QUIZ_ID, game.GAM_CURRENT_QUESTION_INDEX);
+    if (question) {
+      msg.expected_answer = question.QST_CORRECT_ANSWER;
     }
   }
 
