@@ -230,7 +230,8 @@ export function createSpeedWorkflow(ctx: OrchestratorContext): SpeedWorkflow {
     const names = ctx.loadParticipantNames(game.GAM_ID);
     const msg = {
       type: "buzz_locked",
-      buzzer_username: username,
+      participant_name: names[participantOrder],
+      participant_order: participantOrder,
     };
 
     // Send to admin
@@ -395,6 +396,7 @@ export function createSpeedWorkflow(ctx: OrchestratorContext): SpeedWorkflow {
     const unlockMsg = {
       type: "buzz_unlocked",
       remaining_seconds: remainingSeconds,
+      invalidated_participant: names[invalidatedOrder],
     };
 
     ctx.sender.sendToAdmin(unlockMsg);

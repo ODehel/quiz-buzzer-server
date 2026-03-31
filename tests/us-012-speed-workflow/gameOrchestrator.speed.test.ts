@@ -206,7 +206,8 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(locked.some(m => m.target === "admin")).toBe(true);
       expect(locked.some(m => m.target === "buzzer-1")).toBe(true);
       expect(locked.some(m => m.target === "buzzer-2")).toBe(true);
-      expect(locked.every(m => m.buzzer_username === "Charlie")).toBe(true);
+      expect(locked.every(m => m.participant_name === "Charlie")).toBe(true);
+      expect(locked.every(m => m.participant_order === 3)).toBe(true);
     });
 
     it("CA-17: rejects buzz when not in QUESTION_OPEN", () => {
@@ -421,6 +422,7 @@ describe("gameOrchestrator — SPEED workflow", () => {
       expect(unlocked.some(m => m.target === "buzzer-2")).toBe(true);
       expect(unlocked.some(m => m.target === "buzzer-3")).toBe(true);
       expect(unlocked.every(m => m.remaining_seconds > 0)).toBe(true);
+      expect(unlocked.every(m => m.invalidated_participant === "Alice")).toBe(true);
     });
 
     it("CA-13: timer resumes after invalidation", async () => {

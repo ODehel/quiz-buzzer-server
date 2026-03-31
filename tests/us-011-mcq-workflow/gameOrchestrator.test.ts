@@ -401,8 +401,8 @@ describe("gameOrchestrator", () => {
       const notif = mock.messages.find((m) => m.type === "player_answered");
       expect(notif.participant_order).toBe(2);
       expect(notif.participant_name).toBe("Bob");
-      expect(notif.answer).toBe("B");
-      expect(notif.time_ms).toBe(5200);
+      expect(notif.choice).toBe("B");
+      expect(notif.response_time_ms).toBe(5200);
     });
 
     it("CA-17: sends all_answered when all respond", () => {

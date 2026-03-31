@@ -600,8 +600,8 @@ describe("answer handling", () => {
 
     expect(adminNotif.type).toBe("player_answered");
     expect(adminNotif.participant_name).toBe("Alice");
-    expect(adminNotif.answer).toBe("B");
-    expect(typeof adminNotif.time_ms).toBe("number");
+    expect(adminNotif.choice).toBe("B");
+    expect(typeof adminNotif.response_time_ms).toBe("number");
   });
 
   it("CA-18: answer in wrong game state is ignored", async () => {
