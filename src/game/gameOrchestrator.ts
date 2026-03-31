@@ -181,8 +181,10 @@ export function createGameOrchestrator(db: Database.Database, sender: GameSender
       const newIndex = currentIndex + 1;
       updateGameQuestionIndex(db, game.GAM_ID, newIndex);
       transitionState(db, game.GAM_ID, "QUESTION_CLOSED", "OPEN");
+      sender.sendToAdmin({ type: "game_status_changed", status: "OPEN", question_index: newIndex });
     } else {
       transitionState(db, game.GAM_ID, "QUESTION_CLOSED", "COMPLETED");
+      sender.broadcast({ type: "game_status_changed", status: "COMPLETED" });
       sender.broadcastSystemSound?.("GAME_END");
     }
 
