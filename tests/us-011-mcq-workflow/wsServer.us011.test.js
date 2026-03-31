@@ -648,6 +648,113 @@ describe("answer handling", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Buzzer order mapping — quiz_buzzer_XX maps to participant order XX
+// ---------------------------------------------------------------------------
+describe("buzzer order mapping — quiz_buzzer_XX usernames", () => {
+  it("quiz_buzzer_01 answer is accepted as participant order 1 even with different display name", async () => {
+    // Replace buzzer users with production-style quiz_buzzer_XX usernames
+    db.prepare("DELETE FROM T_USER_USR WHERE USR_ROLE = 'buzzer'").run();
+    for (const [i, name] of [[1, "quiz_buzzer_01"], [2, "quiz_buzzer_02"], [3, "quiz_buzzer_03"]]) {
+      db.prepare(
+        `INSERT INTO T_USER_USR (USR_ID, USR_USERNAME, USR_PASSWORD, USR_ROLE, USR_CREATED_AT)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(`buzzer-${i}`, name, "hashed", "buzzer", "2026-03-17T10:00:00.000Z");
+    }
+
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    const buzzerWs = await connectWs(server);
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzerWs, "buzzer-1", "buzzer");
+
+    // Trigger choices to create the answer processor
+    const a1 = waitForMessage(adminWs);
+    const b1 = waitForMessage(buzzerWs);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await a1;
+    await b1;
+
+    // Send answer from quiz_buzzer_01 → should map to participant order 1 (Alice)
+    const buzzerResponsePromise = waitForMessage(buzzerWs);
+    buzzerWs.send(JSON.stringify({ type: "answer", value: "A" }));
+    const response = await buzzerResponsePromise;
+
+    expect(response.type).toBe("answer_received");
+  });
+
+  it("full correction flow with quiz_buzzer_XX usernames sends results to correct buzzers", async () => {
+    // Replace buzzer users with production-style quiz_buzzer_XX usernames
+    db.prepare("DELETE FROM T_USER_USR WHERE USR_ROLE = 'buzzer'").run();
+    for (const [i, name] of [[1, "quiz_buzzer_01"], [2, "quiz_buzzer_02"], [3, "quiz_buzzer_03"]]) {
+      db.prepare(
+        `INSERT INTO T_USER_USR (USR_ID, USR_USERNAME, USR_PASSWORD, USR_ROLE, USR_CREATED_AT)
+         VALUES (?, ?, ?, ?, ?)`
+      ).run(`buzzer-${i}`, name, "hashed", "buzzer", "2026-03-17T10:00:00.000Z");
+    }
+
+    db.prepare("UPDATE T_GAME_GAM SET GAM_STATUS = 'QUESTION_TITLE' WHERE GAM_ID = ?").run("gam-1");
+
+    const adminWs = await connectWs(server);
+    const buzzer1Ws = await connectWs(server);
+    const buzzer2Ws = await connectWs(server);
+    const buzzer3Ws = await connectWs(server);
+
+    await authenticate(adminWs, "admin-1", "admin");
+    await authenticate(buzzer1Ws, "buzzer-1", "buzzer");
+    await authenticate(buzzer2Ws, "buzzer-2", "buzzer");
+    await authenticate(buzzer3Ws, "buzzer-3", "buzzer");
+
+    // trigger_choices
+    const msgs1 = Promise.all([
+      waitForMessage(adminWs),
+      waitForMessage(buzzer1Ws),
+      waitForMessage(buzzer2Ws),
+      waitForMessage(buzzer3Ws),
+    ]);
+    adminWs.send(JSON.stringify({ type: "trigger_choices" }));
+    await msgs1;
+
+    // All 3 buzzers answer
+    const b1Ack = waitForMessage(buzzer1Ws);
+    buzzer1Ws.send(JSON.stringify({ type: "answer", value: "A" })); // correct (Paris)
+    await b1Ack;
+
+    const b2Ack = waitForMessage(buzzer2Ws);
+    buzzer2Ws.send(JSON.stringify({ type: "answer", value: "B" })); // wrong
+    await b2Ack;
+
+    const b3Ack = waitForMessage(buzzer3Ws);
+    buzzer3Ws.send(JSON.stringify({ type: "answer", value: "A" })); // correct
+    await b3Ack;
+
+    // admin receives all_answered
+    await waitForMessage(adminWs);
+
+    // trigger_correction
+    adminWs.send(JSON.stringify({ type: "trigger_correction" }));
+
+    const buzzer1Result = await waitForMessage(buzzer1Ws);
+    const buzzer2Result = await waitForMessage(buzzer2Ws);
+    const buzzer3Result = await waitForMessage(buzzer3Ws);
+    const adminSummary = await waitForMessage(adminWs);
+
+    expect(buzzer1Result.type).toBe("question_result");
+    expect(buzzer1Result.correct).toBe(true);
+    expect(buzzer1Result.points_earned).toBe(10);
+
+    expect(buzzer2Result.type).toBe("question_result");
+    expect(buzzer2Result.correct).toBe(false);
+
+    expect(buzzer3Result.type).toBe("question_result");
+    expect(buzzer3Result.correct).toBe(true);
+
+    expect(adminSummary.type).toBe("question_result_summary");
+    expect(adminSummary.results).toHaveLength(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // CA-28 / CA-29 — trigger_correction error cases
 // ---------------------------------------------------------------------------
 describe("trigger_correction", () => {
