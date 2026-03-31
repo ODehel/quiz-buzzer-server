@@ -66,6 +66,55 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
   // Rate limiter for WebSocket connection attempts (per IP)
   const wsRateLimiter = new RateLimiter(wsRateLimitConnections, wsRateLimitWindowMs);
 
+  // ── Buzzer-order helpers ─────────────────────────────────────────────────
+
+  /**
+   * Extracts the 1-based buzzer order from a username like "quiz_buzzer_01".
+   * Returns null if the username doesn't match the expected pattern.
+   *
+   * @param {string} username
+   * @returns {number|null}
+   */
+  function extractBuzzerOrder(username) {
+    const match = username.match(/^quiz_buzzer_(\d+)$/i);
+    if (!match) return null;
+    const order = parseInt(match[1], 10);
+    return order >= 1 && order <= MAX_BUZZERS ? order : null;
+  }
+
+  /**
+   * Finds the registry entry for the buzzer assigned to the given participant order.
+   * Primary: buzzer quiz_buzzer_XX maps to participant order XX.
+   * Fallback: match buzzer username against participant name (case-insensitive).
+   *
+   * @param {number} participantOrder
+   * @returns {{ ws: import("ws").WebSocket, role: string, username: string } | undefined}
+   */
+  function findBuzzerEntryByOrder(participantOrder) {
+    // Primary: quiz_buzzer_XX → order XX
+    for (const entry of registry.values()) {
+      if (entry.role === "buzzer" && extractBuzzerOrder(entry.username) === participantOrder) {
+        return entry;
+      }
+    }
+
+    // Fallback: match by participant name
+    const game = findActiveGame(db);
+    if (!game) return undefined;
+
+    const participants = findParticipantsByGameId(db, game.GAM_ID);
+    const participant = participants.find((p) => p.GPA_ORDER === participantOrder);
+    if (!participant) return undefined;
+
+    const targetName = participant.GPA_NAME.toLowerCase();
+    for (const entry of registry.values()) {
+      if (entry.role === "buzzer" && entry.username.toLowerCase() === targetName) {
+        return entry;
+      }
+    }
+    return undefined;
+  }
+
   // ── Sender helpers for the orchestrator ──────────────────────────────────
 
   function sendJson(ws, msg) {
@@ -96,27 +145,16 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     },
 
     /**
-     * Send a message to the buzzer whose participant name matches the given order.
-     * Resolves participant name from the active game, then finds the buzzer
-     * whose username matches that name (case-insensitive).
+     * Send a message to the buzzer assigned to the given participant order.
+     * Buzzer quiz_buzzer_XX is assigned to participant order XX.
      *
      * @param {number} participantOrder - 1-based order in T_GAME_PARTICIPANT_GPA
      * @param {Object} msg
      */
     sendToBuzzer(participantOrder, msg) {
-      const game = findActiveGame(db);
-      if (!game) return;
-
-      const participants = findParticipantsByGameId(db, game.GAM_ID);
-      const participant = participants.find((p) => p.GPA_ORDER === participantOrder);
-      if (!participant) return;
-
-      const targetName = participant.GPA_NAME.toLowerCase();
-      for (const entry of registry.values()) {
-        if (entry.role === "buzzer" && entry.username.toLowerCase() === targetName) {
-          sendJson(entry.ws, msg);
-          break;
-        }
+      const entry = findBuzzerEntryByOrder(participantOrder);
+      if (entry) {
+        sendJson(entry.ws, msg);
       }
     },
 
@@ -128,19 +166,9 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
      * @param {string} soundId
      */
     sendSystemSoundToBuzzer(participantOrder, soundId) {
-      const game = findActiveGame(db);
-      if (!game) return;
-
-      const participants = findParticipantsByGameId(db, game.GAM_ID);
-      const participant = participants.find((p) => p.GPA_ORDER === participantOrder);
-      if (!participant) return;
-
-      const targetName = participant.GPA_NAME.toLowerCase();
-      for (const entry of registry.values()) {
-        if (entry.role === "buzzer" && entry.username.toLowerCase() === targetName) {
-          sendSystemSound(entry.ws, soundId);
-          break;
-        }
+      const entry = findBuzzerEntryByOrder(participantOrder);
+      if (entry) {
+        sendSystemSound(entry.ws, soundId);
       }
     },
 
@@ -183,8 +211,9 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
   // ── Game message handler (post-auth) ─────────────────────────────────────
 
   /**
-   * Resolves the participant order for a buzzer by matching its username
-   * against the active game's participants.
+   * Resolves the participant order for a buzzer.
+   * Primary: buzzer quiz_buzzer_XX maps to participant order XX.
+   * Fallback: match username against participant name (case-insensitive).
    *
    * @param {string} username
    * @returns {number|null}
@@ -194,10 +223,19 @@ export function attachWebSocket(httpServer, db, jwtSecret, {
     if (!game) return null;
 
     const participants = findParticipantsByGameId(db, game.GAM_ID);
-    const match = participants.find(
+
+    // Primary: quiz_buzzer_XX → participant order XX
+    const buzzerOrder = extractBuzzerOrder(username);
+    if (buzzerOrder !== null) {
+      const match = participants.find((p) => p.GPA_ORDER === buzzerOrder);
+      if (match) return match.GPA_ORDER;
+    }
+
+    // Fallback: match by participant name
+    const matchByName = participants.find(
       (p) => p.GPA_NAME.toLowerCase() === username.toLowerCase()
     );
-    return match ? match.GPA_ORDER : null;
+    return matchByName ? matchByName.GPA_ORDER : null;
   }
 
   /**
