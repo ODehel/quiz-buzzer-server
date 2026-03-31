@@ -60,6 +60,12 @@ export function createMcqWorkflow(ctx: OrchestratorContext): McqWorkflow {
       time_limit: question.QST_TIME_LIMIT,
     });
 
+    // Send expected answer to admin only (game master needs it to compare)
+    ctx.sender.sendToAdmin({
+      type: "expected_answer",
+      correct_answer: question.QST_CORRECT_ANSWER,
+    });
+
     return ctx.okResult();
   }
 
