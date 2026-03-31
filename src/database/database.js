@@ -143,5 +143,33 @@ export function openDatabase(dbPath = DEFAULT_DB_PATH) {
     db.exec("ALTER TABLE T_GAME_GAM ADD COLUMN GAM_LAST_UPDATED_AT TEXT DEFAULT NULL");
   }
 
+  // Migration: add QUESTION_BUZZED to the GAM_STATUS CHECK constraint.
+  // Databases created before US-012 was introduced have an older constraint
+  // that omits QUESTION_BUZZED, causing SQLITE_CONSTRAINT_CHECK when a buzz
+  // is received during a SPEED game. SQLite does not support ALTER COLUMN, so
+  // we detect the old constraint and recreate the table using the rename pattern.
+  const gameTableDef = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'T_GAME_GAM'")
+    .get();
+  if (gameTableDef && !gameTableDef.sql.includes("QUESTION_BUZZED")) {
+    db.pragma("foreign_keys = OFF");
+    db.exec(`
+      CREATE TABLE T_GAME_GAM_NEW
+      (
+          GAM_ID                      TEXT PRIMARY KEY,
+          GAM_QUIZ_ID                 TEXT NOT NULL REFERENCES T_QUIZ_QUZ (QUZ_ID),
+          GAM_STATUS                  TEXT NOT NULL DEFAULT 'PENDING'
+                                          CHECK (GAM_STATUS IN ('PENDING', 'OPEN', 'QUESTION_TITLE', 'QUESTION_OPEN', 'QUESTION_BUZZED', 'QUESTION_CLOSED', 'COMPLETED', 'IN_ERROR')),
+          GAM_CURRENT_QUESTION_INDEX  INTEGER NOT NULL DEFAULT 0,
+          GAM_CREATED_AT              TEXT NOT NULL,
+          GAM_LAST_UPDATED_AT         TEXT DEFAULT NULL
+      );
+      INSERT INTO T_GAME_GAM_NEW SELECT * FROM T_GAME_GAM;
+      DROP TABLE T_GAME_GAM;
+      ALTER TABLE T_GAME_GAM_NEW RENAME TO T_GAME_GAM;
+    `);
+    db.pragma("foreign_keys = ON");
+  }
+
   return db;
 }
