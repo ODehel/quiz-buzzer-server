@@ -153,8 +153,8 @@ export function createMcqWorkflow(ctx: OrchestratorContext): McqWorkflow {
         type: "player_answered",
         participant_order: participantOrder,
         participant_name: names[participantOrder],
-        answer,
-        time_ms: timeMs,
+        choice: answer,
+        response_time_ms: timeMs,
       });
 
       // CA-16 : all_answered
