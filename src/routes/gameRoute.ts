@@ -128,10 +128,10 @@ export function createGameResourceHandler(
       const b = body as Record<string, unknown>;
 
       if (req.method === "PUT") {
-        const rawParticipants = b.participants as Array<{ name: string }> | undefined;
+        const rawParticipants = b.participants as Array<string | { name: string }> | undefined;
         const result = updateGame(db, id, {
           status: b.status as GameStatus | undefined,
-          participants: rawParticipants?.map((p) => p.name),
+          participants: rawParticipants?.map((p) => typeof p === "string" ? p : p.name),
           quizId: b.quiz_id as string | undefined,
         });
         // US-018 CA-7/CA-8: notify WebSocket layer of game state change
