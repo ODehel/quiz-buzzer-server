@@ -11,7 +11,7 @@ import {
 import { countQuestionsByTheme } from "../repositories/questionRepository.ts";
 import { validateUuid, normalizeName, NAME_REGEX } from "../utils/validation.ts";
 import Database from "better-sqlite3";
-import { ThemeRow, ThemeApiResponse, PaginatedResponse } from "../types/index.ts";
+import type { ThemeRow, ThemeApiResponse, PaginatedResponse } from "../types/index.ts";
 
 export { validateUuid, normalizeName };
 

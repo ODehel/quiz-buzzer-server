@@ -12,8 +12,7 @@
  */
 
 import Database from "better-sqlite3";
-import {
-  GameSender,
+import type { GameSender,
   GameOrchestrator,
   OrchestratorResult,
   OrchestratorContext,
@@ -25,7 +24,7 @@ import {
   GameRow,
   ParticipantRow,
   GameAnswerData,
-} from "../types/index.ts";
+ } from "../types/index.ts";
 import { findActiveGame, updateGameQuestionIndex, getCumulativeScore } from "../repositories/gameanswerRepository.ts";
 import { findParticipantsByGameId } from "../repositories/gameRepository.ts";
 import { transitionState, resolveCurrentQuestion, hasMoreQuestions } from "./gameworkflow.ts";

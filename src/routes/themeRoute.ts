@@ -11,7 +11,7 @@ import {
 } from "../services/themeService.ts";
 import { parsePagination, validateAllowedFields } from "../utils/validation.ts";
 import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.ts";
-import { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler } from "../types/index.ts";
+import type { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler } from "../types/index.ts";
 import { ServerResponse } from "node:http";
 import Database from "better-sqlite3";
 

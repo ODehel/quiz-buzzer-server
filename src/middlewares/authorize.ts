@@ -1,5 +1,5 @@
 import { AppError } from "../errors/AppError.ts";
-import { AppRequest, AuthorizeMiddleware } from "../types/index.ts";
+import type { AppRequest, AuthorizeMiddleware } from "../types/index.ts";
 
 /**
  * Factory retournant un middleware de vérification de rôle.

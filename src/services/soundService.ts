@@ -13,7 +13,7 @@ import { getExtensionFromMime } from "../middlewares/upload.ts";
 import { logInfo, logWarn } from "../utils/logger.ts";
 import { validateUuid, normalizeName } from "../utils/validation.ts";
 import Database from "better-sqlite3";
-import { SoundRow, SoundApiResponse, PaginatedResponse, UploadedFile } from "../types/index.ts";
+import type { SoundRow, SoundApiResponse, PaginatedResponse, UploadedFile } from "../types/index.ts";
 
 export { validateUuid, normalizeName };
 

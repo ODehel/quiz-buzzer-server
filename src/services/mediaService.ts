@@ -5,7 +5,7 @@ import { logInfo, logWarn } from "../utils/logger.ts";
 import { findQuestionById, updateQuestion } from "../repositories/questionRepository.ts";
 import { getExtensionFromMime } from "../middlewares/upload.ts";
 import Database from "better-sqlite3";
-import { QuestionRow, UploadedFile } from "../types/index.ts";
+import type { QuestionRow, UploadedFile } from "../types/index.ts";
 
 /**
  * Generates the filename for a media file

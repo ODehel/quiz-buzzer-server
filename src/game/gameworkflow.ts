@@ -9,7 +9,7 @@
  */
 
 import Database from "better-sqlite3";
-import { GameStatus, QuestionRow } from "../types/index.ts";
+import type { GameStatus, QuestionRow } from "../types/index.ts";
 import { findGameById, updateGameStatus } from "../repositories/gameRepository.ts";
 
 /**

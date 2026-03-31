@@ -13,7 +13,7 @@ import {
 import { deleteMediaFile } from "./mediaService.ts";
 import { validateUuid, normalizeName as normalizeTitle, isValidUuid, parsePagination } from "../utils/validation.ts";
 import Database from "better-sqlite3";
-import { QuestionApiResponse, PaginatedResponse, QuestionType } from "../types/index.ts";
+import type { QuestionApiResponse, PaginatedResponse, QuestionType } from "../types/index.ts";
 
 import {
   ALLOWED_FIELDS_PUT,

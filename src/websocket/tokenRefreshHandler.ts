@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import jwt from "jsonwebtoken";
-import { WsRegistryEntry, JwtPayload } from "../types/index.ts";
+import type { WsRegistryEntry, JwtPayload } from "../types/index.ts";
 import { logInfo, logWarn } from "../utils/logger.ts";
 
 export const TOKEN_EXPIRING_SOON_SECONDS = 300;

@@ -1,6 +1,6 @@
 import Busboy from "busboy";
 import { AppError } from "../errors/AppError.ts";
-import { AppRequest, SoundMultipartResult } from "../types/index.ts";
+import type { AppRequest, SoundMultipartResult } from "../types/index.ts";
 
 const ALLOWED_AUDIO_MIMES: Set<string> = new Set(["audio/mpeg", "audio/wav", "audio/ogg"]);
 

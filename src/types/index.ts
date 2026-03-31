@@ -11,7 +11,7 @@ import Database from "better-sqlite3";
 
 // ── Configuration ────────────────────────────────────────────────────────────
 
-export interface AppConfig {
+export type AppConfig = {
   jwtSecret: string;
   jwtExpiration: number;
   port: number;

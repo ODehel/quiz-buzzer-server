@@ -1,4 +1,4 @@
-import { IRateLimiter, RateLimitCheck } from "../types/index.ts";
+import type { IRateLimiter, RateLimitCheck } from "../types/index.ts";
 
 /**
  * Rate limiter in-memory par adresse IP.

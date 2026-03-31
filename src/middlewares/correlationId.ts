@@ -1,7 +1,7 @@
 import { v7 as uuidv7 } from "uuid";
 import { runWithCorrelationId } from "../utils/correlationStore.ts";
 import { ServerResponse } from "node:http";
-import { AppRequest } from "../types/index.ts";
+import type { AppRequest } from "../types/index.ts";
 
 /**
  * Wraps an HTTP request handler to generate a UUIDv7 correlation_id (CA-16).

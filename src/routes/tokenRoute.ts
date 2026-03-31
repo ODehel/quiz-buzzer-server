@@ -5,7 +5,7 @@ import { sendJson } from "../utils/sendJson.ts";
 import { parseJsonBody } from "../utils/parseJsonBody.ts";
 import { validateAllowedFields } from "../utils/validation.ts";
 import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.ts";
-import { AppRequest, AppConfig, IRateLimiter, RouteHandler } from "../types/index.ts";
+import type { AppRequest, AppConfig, IRateLimiter, RouteHandler } from "../types/index.ts";
 import { ServerResponse } from "node:http";
 import Database from "better-sqlite3";
 

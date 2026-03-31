@@ -1,7 +1,7 @@
 import { version } from "../config/version.ts";
 import { sendJson } from "../utils/sendJson.ts";
 import { logError } from "../utils/logger.ts";
-import { AppRequest, RouteHandler } from "../types/index.ts";
+import type { AppRequest, RouteHandler } from "../types/index.ts";
 import { ServerResponse } from "node:http";
 
 interface HealthDeps {

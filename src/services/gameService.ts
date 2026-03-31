@@ -18,7 +18,7 @@ import { findAnswersByGame } from "../repositories/gameanswerRepository.ts";
 import { findQuizById } from "../repositories/quizRepository.ts";
 import { validateUuid } from "../utils/validation.ts";
 import Database from "better-sqlite3";
-import { GameRow, ParticipantRow, GameApiResponse, PaginatedResponse, GameStatus } from "../types/index.ts";
+import type { GameRow, ParticipantRow, GameApiResponse, PaginatedResponse, GameStatus } from "../types/index.ts";
 
 export { validateUuid };
 

@@ -1,5 +1,5 @@
 import { ServerResponse } from "node:http";
-import { AppRequest, IRateLimiter } from "../types/index.ts";
+import type { AppRequest, IRateLimiter } from "../types/index.ts";
 import { AppError } from "../errors/AppError.ts";
 import { sendJson, sendError } from "./sendJson.ts";
 import { logError } from "./logger.ts";

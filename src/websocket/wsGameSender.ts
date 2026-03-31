@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import { WsMessage, GameSender } from "../types/index.ts";
+import type { WsMessage, GameSender } from "../types/index.ts";
 import { WsRegistry } from "./wsRegistry.ts";
 import { broadcastSystemSoundToBuzzers, sendSystemSound } from "../utils/soundUtils.ts";
 import logger from "../config/logger.ts";

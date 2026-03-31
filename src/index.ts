@@ -42,7 +42,7 @@ import {
 } from "./routes/soundRoute.ts";
 import { createHealthHandler } from "./routes/health.ts";
 import { IncomingMessage, ServerResponse } from "node:http";
-import { AppRequest, RouteEntry, GameStatus } from "./types/index.ts";
+import type { AppRequest, RouteEntry, GameStatus } from "./types/index.ts";
 
 
 const __filename = fileURLToPath(import.meta.url);

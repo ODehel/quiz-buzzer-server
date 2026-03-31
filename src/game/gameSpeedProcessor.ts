@@ -10,7 +10,7 @@
  * Ce module est sans état global : chaque question reçoit un nouveau processeur.
  */
 
-import { ISpeedProcessor, BuzzResult } from "../types/index.ts";
+import type { ISpeedProcessor, BuzzResult } from "../types/index.ts";
 
 interface SpeedProcessorOptions {
   questionId: string;

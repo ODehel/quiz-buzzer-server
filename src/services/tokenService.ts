@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { AppConfig, TokenResult, JwtPayload, UserRow } from "../types/index.ts";
+import type { AppConfig, TokenResult, JwtPayload, UserRow } from "../types/index.ts";
 
 /**
  * Génère un token JWT pour un utilisateur authentifié.

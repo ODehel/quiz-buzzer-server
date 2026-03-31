@@ -1,6 +1,6 @@
 import { verifyToken } from "../services/tokenService.ts";
 import { AppError } from "../errors/AppError.ts";
-import { AppRequest, AuthMiddleware } from "../types/index.ts";
+import type { AppRequest, AuthMiddleware } from "../types/index.ts";
 
 /**
  * Middleware d'authentification Bearer token.

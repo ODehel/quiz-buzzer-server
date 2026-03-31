@@ -6,14 +6,13 @@
  */
 
 import { v7 as uuidv7 } from "uuid";
-import {
-  OrchestratorContext,
+import type { OrchestratorContext,
   OrchestratorResult,
   BuzzResult,
   GameRow,
   QuestionRow,
   GameAnswerData,
-} from "../types/index.ts";
+ } from "../types/index.ts";
 import { transitionState, resolveCurrentQuestion } from "./gameworkflow.ts";
 import { createGameTimer } from "./gameTimer.ts";
 import { createSpeedProcessor } from "./gameSpeedProcessor.ts";

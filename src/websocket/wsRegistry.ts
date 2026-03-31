@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { WsRegistryEntry, ParticipantRow } from "../types/index.ts";
+import type { WsRegistryEntry, ParticipantRow } from "../types/index.ts";
 import { findActiveGame } from "../repositories/gameanswerRepository.ts";
 import { findParticipantsByGameId } from "../repositories/gameRepository.ts";
 

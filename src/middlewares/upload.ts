@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import Busboy from "busboy";
 import { AppError } from "../errors/AppError.ts";
-import { AppRequest, MultipartResult } from "../types/index.ts";
+import type { AppRequest, MultipartResult } from "../types/index.ts";
 
 // Supported MIME types per media type
 const SUPPORTED_MIMES: Record<string, Set<string>> = {

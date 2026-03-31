@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { IncomingMessage, ServerResponse, Server } from "node:http";
 import { getLocalIpAddress } from "./network.ts";
-import { StartServerOptions } from "./types/index.ts";
+import type { StartServerOptions } from "./types/index.ts";
 
 const DEFAULT_PORT = 3000;
 

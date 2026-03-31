@@ -9,7 +9,7 @@ import {
 } from "../services/soundService.ts";
 import { parsePagination } from "../utils/validation.ts";
 import { handleError, checkRateLimit, checkMethod } from "../utils/routeHelpers.ts";
-import { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler } from "../types/index.ts";
+import type { AppRequest, AuthMiddleware, AuthorizeMiddleware, IRateLimiter, AppConfig, RouteHandler } from "../types/index.ts";
 import { ServerResponse } from "node:http";
 import Database from "better-sqlite3";
 
